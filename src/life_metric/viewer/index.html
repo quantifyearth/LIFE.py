@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LIFE globe viewer</title>
+<meta name="description" content="Browse the LIFE extinction-risk layers (Eyres et al. 2025) straight from a Zarr v3 store on a globe.">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@6.11.2/dist/maplibre-gl.css">
+<script type="importmap">
+{ "imports": {
+    "zarrita": "https://cdn.jsdelivr.net/npm/zarrita@0.7.5/+esm",
+    "maplibre-gl": "https://cdn.jsdelivr.net/npm/maplibre-gl@6.11.2/dist/maplibre-gl.mjs",
+    "life-metric": "./life-metric/index.js"
+} }
+</script>
+<style>
+  :root {
+    --bg: #fcfcfb; --panel: rgba(252, 252, 251, 0.94); --ink: #1a1a19; --ink-2: #4a4a47; --ink-3: #7a7a76;
+    --line: #dcdbd6; --accent: #256abf; --accent-ink: #fff; --field: #fff; --shadow: 0 4px 24px rgba(0,0,0,.12);
+  }
+  :root[data-theme="dark"] {
+    --bg: #1a1a19; --panel: rgba(26, 26, 25, 0.94); --ink: #f0efec; --ink-2: #c4c3be; --ink-3: #8f8e89;
+    --line: #3b3b38; --accent: #6da7ec; --accent-ink: #0d1b2e; --field: #242423; --shadow: 0 4px 24px rgba(0,0,0,.5);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  #map { position: absolute; inset: 0; }
+  #panel { position: absolute; top: 12px; left: 12px; width: 340px; max-height: calc(100% - 24px); overflow: auto;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow);
+    padding: 14px 16px 16px; backdrop-filter: blur(6px); }
+  #panel h1 { font-size: 16px; margin: 0 0 2px; letter-spacing: .01em; }
+  #panel .sub { color: var(--ink-2); font-size: 12px; margin: 0 0 12px; }
+  fieldset { border: 0; padding: 0; margin: 0 0 10px; }
+  legend { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); margin-bottom: 4px; }
+  .row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; min-width: 0; }
+  .row > * { min-width: 0; }
+  .row > label { flex: 0 0 74px; color: var(--ink-2); font-size: 13px; }
+  .row > label.check { flex: 1 1 auto; }
+  .row > span { flex: 0 0 auto; }
+  .row.stack { flex-direction: column; align-items: stretch; gap: 4px; }
+  .row.stack > label { flex: 0 0 auto; }
+  .row.stack > .seg { flex: 0 0 auto; width: 100%; }
+  .seg button { white-space: nowrap; }
+  select, input[type=number] { flex: 1 1 0; width: 100%; min-width: 0; padding: 5px 7px; border: 1px solid var(--line); border-radius: 6px;
+    background: var(--field); color: var(--ink); font: inherit; }
+  input[type=range] { flex: 1; accent-color: var(--accent); }
+  .seg { display: flex; gap: 0; flex: 1 1 0; min-width: 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .seg button { flex: 1 1 0; min-width: 0; padding: 5px 0; border: 0; background: var(--field); color: var(--ink-2); font: inherit; cursor: pointer; }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+  .check { display: flex; align-items: center; gap: 6px; color: var(--ink-2); font-size: 13px; }
+  #legend { margin: 6px 0 2px; }
+  #legend canvas { width: 100%; height: 12px; border-radius: 3px; display: block; border: 1px solid var(--line); }
+  #legend .ticks { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-3); margin-top: 3px;
+    font-variant-numeric: tabular-nums; }
+  #legend .units { font-size: 12px; color: var(--ink-2); margin-top: 4px; }
+  .hidden { display: none !important; }
+  #blendLegend { display: grid; grid-template-columns: repeat(2, 1fr); gap: 3px 10px; font-size: 12px; color: var(--ink-2); margin-top: 6px; }
+  #blendLegend .chip { display: inline-block; width: 14px; height: 14px; border-radius: 3px; margin-right: 6px; vertical-align: -3px; border: 1px solid var(--line); }
+  #blendLegend .mixes { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 4px; }
+  #blendLegend .mixes span { white-space: nowrap; }
+  #readout { font-size: 12px; color: var(--ink-2); min-height: 2.6em; font-variant-numeric: tabular-nums;
+    border-top: 1px solid var(--line); padding-top: 8px; margin-top: 4px; }
+  #readout b { color: var(--ink); font-weight: 600; }
+  details { margin-top: 8px; font-size: 12px; color: var(--ink-2); }
+  details summary { cursor: pointer; color: var(--ink); }
+  #options { font-size: 14px; border-top: 1px solid var(--line); padding-top: 6px; }
+  #options summary { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); margin-bottom: 6px; }
+  #legend { margin: 10px 0 4px; }
+  details p { margin: 6px 0; }
+  a { color: var(--accent); }
+  #status { position: absolute; right: 12px; bottom: 32px; font-size: 12px; background: var(--panel); color: var(--ink-2);
+    border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; pointer-events: none; }
+  .maplibregl-popup-content { background: var(--panel); color: var(--ink); border-radius: 8px; box-shadow: var(--shadow);
+    font: 12px/1.4 system-ui, sans-serif; padding: 10px 12px; }
+  .maplibregl-popup-tip { border-top-color: var(--panel) !important; border-bottom-color: var(--panel) !important; }
+  .popup table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  .popup td { padding: 1px 8px 1px 0; }
+  .popup td:last-child { text-align: right; }
+  .popup .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+  @media (max-width: 640px) {
+    #panel { left: 0; right: 0; top: auto; bottom: 0; width: auto; max-height: 55%; border-radius: 12px 12px 0 0; }
+    #status { bottom: auto; top: 12px; }
+  }
+</style>
+</head>
+<body>
+<div id="map" role="application" aria-label="Map of LIFE layers"></div>
+
+<aside id="panel">
+  <h1>LIFE: extinctions from land-cover change</h1>
+  <p class="sub"><a href="https://doi.org/10.1098/rstb.2023.0327" title="The paper that defines the LIFE metric.">Eyres et al. 2025</a> · 1 arc-minute · terrestrial vertebrates<br>
+    <a id="source" href="#" title="The Zarr store this page is reading." style="color:var(--ink-3);font-size:11px;word-break:break-all"></a></p>
+  <div class="row hidden" id="versionRow"><label for="version" title="The release of the dataset to show.">Version</label><select id="version" title="The release of the dataset to show."></select></div>
+
+  <div class="row"><label for="scenario" title="The land-cover change to map.">Scenario</label>
+    <select id="scenario" title="The land-cover change to map."></select></div>
+  <div class="row stack"><label for="kind" title="How to colour the map.">Map</label>
+    <div class="seg" id="kind">
+      <button type="button" data-v="blend" aria-pressed="true" title="Colour each pixel by which classes of vertebrates are most affected: green for amphibians, blue for birds, orange for mammals and magenta for reptiles. Mixed colours mean several classes are affected together, and black means all four.">Taxa blend</button>
+      <button type="button" data-v="life" title="Colour each pixel by the change in expected extinctions for one group of species. Red means more extinctions and blue means fewer.">One group</button>
+      <button type="button" data-v="area" title="Colour each pixel by the area of its land that changes under the scenario.">Land changed</button>
+    </div></div>
+  <div class="row" id="groupRow"><label for="taxon" title="The species to include.">Group</label>
+    <select id="taxon" title="The species to include: all terrestrial vertebrates, or one class.">
+      <option value="0" selected>All vertebrates</option>
+      <option value="1">Amphibians</option>
+      <option value="2">Birds</option>
+      <option value="3">Mammals</option>
+      <option value="4">Reptiles</option>
+    </select></div>
+
+  <div id="legend"><canvas id="legendBar" width="512" height="1"></canvas>
+    <div class="ticks"><span id="tMin"></span><span id="tMid"></span><span id="tMax"></span></div>
+    <div id="blendLegend" class="hidden"></div>
+    <div class="units" id="units"></div></div>
+
+  <details id="options"><summary title="The persistence curve, the colour scale and the display.">Options</summary>
+    <div class="row" id="curveRow"><label for="curve" title="How a species' chance of survival is assumed to fall as its habitat shrinks.">Curve</label>
+      <select id="curve" title="The persistence curve used for the score."></select></div>
+    <div class="row"><label for="mode" title="How values are spread over the colours.">Stretch</label>
+      <div class="seg" id="mode">
+        <button type="button" data-v="log" aria-pressed="true" title="Spread out the many small values so that they are visible.">log</button>
+        <button type="button" data-v="linear" title="Keep colour proportional to value.">linear</button>
+      </div></div>
+    <div class="row"><label for="pct" title="The percentile of the values at which the colours saturate.">Range</label>
+      <input type="range" id="pct" min="90" max="100" step="0.5" value="99" aria-label="range percentile" title="The colours saturate at this percentile of the values in the current view. Lower it to saturate more of the map.">
+      <span id="pctLabel" style="width:4.5em;font-size:12px;color:var(--ink-2)">p99</span></div>
+    <div class="row" id="vmaxRow"><label for="vmax" id="vmaxLabel" title="The value at which the colours saturate.">± max</label>
+      <input type="number" id="vmax" step="any" aria-label="colour range maximum" title="The value at which the colours saturate. Type a value, or press auto to return to the percentile.">
+      <button type="button" id="autoBtn" title="Return to the percentile." style="flex:0 0 auto;border:1px solid var(--line);border-radius:6px;background:var(--field);color:var(--ink-2);font:inherit;padding:4px 8px;cursor:pointer">auto</button></div>
+    <div class="row" id="zerosRow"><label class="check" title="Pixels with a value of exactly zero, including the open ocean in the arable layers, are hidden unless this is ticked."><input type="checkbox" id="zeros"> show exact zeros</label></div>
+    <div class="row"><label for="opacity" title="How strongly the data is drawn over the basemap.">Opacity</label><input type="range" id="opacity" min="0.2" max="1" step="0.05" value="0.85" title="How strongly the data is drawn over the basemap."></div>
+    <div class="row"><label for="basemap" title="The background map.">Basemap</label>
+      <select id="basemap" title="The background map.">
+        <option value="osm">OpenStreetMap</option>
+        <option value="positron">Light (OpenFreeMap)</option>
+        <option value="dark">Dark (OpenFreeMap)</option>
+        <option value="none">None</option>
+      </select></div>
+  </details>
+
+  <div id="readout">Hover the map for values. Click for every group at full resolution.</div>
+
+  <details><summary>About the data</summary>
+    <p id="aboutSummary"></p>
+    <p>A value is the change in the expected number of extinctions over 100 years per km² of land that changes in the pixel. Positive means more extinctions. Blank pixels have no data.</p>
+    <p>Zoomed out you see averaged overview levels; from zoom 6 the map is drawn from the full 1 arc-minute data. The map is drawn in the browser from the Zarr store by the <code>life-metric</code> library.</p>
+    <p>Paper: <a href="https://doi.org/10.1098/rstb.2023.0327">doi:10.1098/rstb.2023.0327</a>.
+       <span id="dataRecord"></span>
+       This copy: <a href="https://source.coop/tessera/life">source.coop/tessera/life</a>.
+       Method and code: <a href="https://github.com/quantifyearth/LIFE">quantifyearth/LIFE</a>.</p>
+    <p id="aboutCite"></p>
+    <p id="aboutTerms"></p>
+  </details>
+</aside>
+<div id="status" aria-live="polite">loading…</div>
+
+<script type="module">
+import * as maplibregl from "maplibre-gl";
+import { LifeStore, LifeProtocol, LifeMapLayer, OSM_STYLE, makeScale, makeBlend, percentileAbs, pickLevel, TAXA } from "life-metric";
+
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+
+// Where the data lives. By default the published catalogue on source.coop is
+// consulted and its latest release (or ?version=) opened. ?store=<url> opens a
+// store directly; ?store=. opens the store this page is served from.
+const DEFAULT_CATALOGUE = "https://data.source.coop/tessera/life";
+const DEFAULT_STORE = DEFAULT_CATALOGUE + "/v1.01";
+const CATALOGUE_URL = new URL(params.get("catalogue") || DEFAULT_CATALOGUE, location.href).href.replace(/\/$/, "");
+
+async function resolveStore() {
+  if (params.get("store")) return { url: new URL(params.get("store"), location.href).href.replace(/\/$/, ""), releases: [] };
+  try {
+    const r = await fetch(CATALOGUE_URL + "/versions.json");
+    if (!r.ok) throw new Error(String(r.status));
+    const m = await r.json();
+    const releases = Object.entries(m.versions).map(([version, v]) => ({ version, url: new URL(v.path, CATALOGUE_URL + "/").href.replace(/\/$/, ""), ...v }));
+    const wanted = params.get("version") || m.latest || releases[releases.length - 1].version;
+    const rel = releases.find((x) => x.version === wanted) || releases[releases.length - 1];
+    return { url: rel.url, releases, version: rel.version };
+  } catch (e) {
+    console.warn("catalogue unavailable, opening the default store:", e.message);
+    return { url: DEFAULT_STORE, releases: [] };
+  }
+}
+
+const state = {
+  kind: "blend", scenario: "arable", curve: "0.25", taxon: 0,
+  mode: "log", pct: 99, vmax: null, autoVmax: true, zeros: false,
+  opacity: 0.85, basemap: "osm",
+};
+const HASH_KEYS = ["kind", "scenario", "curve", "taxon", "mode", "pct", "vmax", "zeros", "opacity", "basemap"];
+const tuning = (k) => { const v = parseFloat(new URLSearchParams(location.hash.slice(1)).get(k)); return v > 0 ? v : undefined; };
+
+function readHash() {
+  const h = new URLSearchParams(location.hash.replace(/^#/, ""));
+  for (const k of HASH_KEYS) if (h.has(k)) {
+    const v = h.get(k);
+    state[k] = k === "taxon" ? +v : k === "pct" || k === "opacity" || k === "vmax" ? parseFloat(v) : k === "zeros" ? v === "1" : v;
+  }
+  if (h.has("vmax")) state.autoVmax = false;
+}
+function writeHash() {
+  const h = new URLSearchParams(location.hash.replace(/^#/, ""));
+  for (const k of HASH_KEYS) {
+    if (k === "vmax" && state.autoVmax) { h.delete(k); continue; }
+    h.set(k, k === "zeros" ? (state.zeros ? "1" : "0") : String(state[k]));
+  }
+  history.replaceState(null, "", "#" + h.toString());
+}
+
+const theme = () => (state.basemap === "dark" || state.basemap === "none" ? "dark" : "light");
+const isArea = () => state.kind === "area";
+const isBlend = () => state.kind === "blend";
+const isSingle = () => state.kind === "life";
+const BLEND_BANDS = [1, 2, 3, 4];
+const LABEL = { all: "All vertebrates", AMPHIBIA: "Amphibians", AVES: "Birds", MAMMALIA: "Mammals", REPTILIA: "Reptiles" };
+const label = (t) => LABEL[t] || t;
+const rgb = (c) => `rgb(${c[0]},${c[1]},${c[2]})`;
+
+// --- data --------------------------------------------------------------
+const status = (t) => { $("status").textContent = t; };
+const resolved = await resolveStore();
+const store = await LifeStore.open(resolved.url).catch((e) => { status("cannot open store: " + e.message); throw e; });
+$("source").textContent = resolved.url.replace(/^https?:\/\//, "");
+$("source").href = resolved.url + "/zarr.json";
+$("aboutSummary").textContent = store.info.summary || "";
+$("aboutCite").textContent = store.info.citation ? "Cite: " + store.info.citation : "";
+if (store.info.doi) {
+  const a = document.createElement("a");
+  a.href = "https://doi.org/" + store.info.doi;
+  a.textContent = "Data of record: " + store.info.doi;
+  $("dataRecord").append(a);
+} else {
+  $("dataRecord").textContent = "This store has no Zenodo DOI.";
+}
+$("aboutTerms").innerHTML = store.info.termsOfUse
+  ? `Terms of use: ${store.info.termsOfUse.replace(/ibat@ibat-alliance\.org/, '<a href="mailto:ibat@ibat-alliance.org">ibat@ibat-alliance.org</a>')}` : "";
+if (resolved.releases.length > 1) {
+  const sel = $("version");
+  sel.innerHTML = resolved.releases.map((r) => `<option value="${r.version}" ${r.version === resolved.version ? "selected" : ""}>v${r.version}${r.released ? " · " + r.released : ""}</option>`).join("");
+  $("versionRow").classList.remove("hidden");
+  sel.addEventListener("change", (e) => { const p = new URLSearchParams(location.search); p.set("version", e.target.value); location.search = p.toString(); });
+}
+readHash();
+const choices = (id, entries, display) => {
+  const select = $(id);
+  select.replaceChildren(...Object.entries(entries).map(([name, description]) => {
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = display(name);
+    option.title = description;
+    return option;
+  }));
+  if (!(state[id] in entries)) state[id] = Object.keys(entries)[0];
+  select.value = state[id];
+};
+choices("scenario", store.scenarios, (name) => name.replaceAll("_", " ").replace(/^./, (c) => c.toUpperCase()));
+choices("curve", store.curves, (name) => name === "gompertz" ? "Gompertz" : "z = " + name);
+
+const currentLayer = () => (isArea() ? store.area(state.scenario) : store.layer(state.scenario, state.curve));
+const currentBand = () => (isArea() ? 0 : state.taxon);
+const coarsest = store.levels[store.levels.length - 1];
+
+let scale = null;
+let blend = null;
+
+async function coarseBand(layer, band) {
+  const r = await layer.read({ taxon: layer.bands[band], level: coarsest });
+  return r.data;
+}
+
+function drawBlendLegend() {
+  const chips = blend.names.map((n, i) =>
+    `<span title="Fully saturated where this class's value reaches ${fmt(blend.vmaxes[i], 2)}."><span class="chip" style="background:${rgb(blend.swatches[n])}"></span>${label(n)}</span>`);
+  const mixes = Object.entries(blend.pairs).slice(0, 3).map(([k, c]) =>
+    `<span><span class="chip" style="background:${rgb(c)}"></span>${k.split("+").map((n) => label(n).toLowerCase()).join(" + ")}</span>`);
+  mixes.push(`<span><span class="chip" style="background:${rgb(blend.black)}"></span>all four</span>`);
+  $("blendLegend").innerHTML = chips.join("") + `<div class="mixes">${mixes.join("")}</div>`;
+  $("units").textContent = `The colour is the class most affected, each measured against its own range. Classes that come close mix in and darken the colour; all four together give black. Fainter pixels are less affected.`;
+}
+
+function fmt(v, digits = 3) {
+  if (!Number.isFinite(v)) return "no data";
+  if (v === 0) return "0";
+  const a = Math.abs(v);
+  return a >= 0.01 && a < 1e6 ? v.toPrecision(digits) : v.toExponential(digits - 1);
+}
+
+function drawLegend() {
+  const blendMode = isBlend();
+  $("legendBar").classList.toggle("hidden", blendMode);
+  $("legend").querySelector(".ticks").classList.toggle("hidden", blendMode);
+  $("blendLegend").classList.toggle("hidden", !blendMode);
+  syncEnabled();
+  if (blendMode) return drawBlendLegend();
+  const canvas = $("legendBar"), ctx = canvas.getContext("2d");
+  const img = ctx.createImageData(scale.n, 1);
+  img.data.set(scale.lut);
+  ctx.putImageData(img, 0, 0);
+  const v = scale.vmax;
+  if (scale.polarity === "diverging") {
+    $("tMin").textContent = "−" + fmt(v); $("tMid").textContent = "0"; $("tMax").textContent = "+" + fmt(v);
+    $("units").textContent = `Change in expected extinctions per km² of land changed, ${scale.mode} stretch. Blue means fewer extinctions and red means more.`;
+  } else {
+    $("tMin").textContent = "0"; $("tMid").textContent = ""; $("tMax").textContent = fmt(v);
+    $("units").textContent = `Area of land that changes in each pixel, in m², ${scale.mode} stretch.` +
+      (state.scenario === "arable" ? " The source counts the open ocean as changing under this scenario." : "");
+  }
+}
+
+async function rebuildScale() {
+  const layer = await currentLayer();
+  if (isBlend()) {
+    const vmaxes = await Promise.all(BLEND_BANDS.map((b) => coarseBand(layer, b).then((d) => percentileAbs(d, state.pct))));
+    const direction = layer.statistics.all?.mean < 0 ? -1 : 1;
+    blend = makeBlend({ vmaxes, mode: state.mode, direction, contrast: tuning("contrast"), alpha: tuning("alpha") });
+    $("pctLabel").textContent = `p${state.pct}`;
+    drawLegend();
+    return;
+  }
+  if (state.autoVmax || !(state.vmax > 0)) state.vmax = percentileAbs(await coarseBand(layer, currentBand()), state.pct);
+  scale = makeScale({ vmax: state.vmax, mode: state.mode, polarity: isArea() ? "sequential" : "diverging", theme: theme() });
+  $("vmax").value = Number(state.vmax.toPrecision(4));
+  $("vmaxLabel").textContent = isArea() ? "max" : "± max";
+  $("pctLabel").textContent = state.autoVmax ? `p${state.pct}` : "manual";
+  drawLegend();
+}
+
+// --- map ----------------------------------------------------------------
+const STYLES = {
+  osm: OSM_STYLE,
+  positron: "https://tiles.openfreemap.org/styles/positron",
+  dark: "https://tiles.openfreemap.org/styles/dark",
+  none: { version: 8, sources: {}, layers: [{ id: "bg", type: "background", paint: { "background-color": "#0e1424" } }] },
+};
+const protocol = new LifeProtocol().install(maplibregl);
+const map = new maplibregl.Map({
+  container: "map", style: STYLES[state.basemap], hash: "map",
+  center: [20, 10], zoom: 1.6, minZoom: 0.5, maxZoom: 12, attributionControl: false,
+});
+map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), "top-right");
+map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution:
+  `LIFE v${store.version} <a href="https://doi.org/10.1098/rstb.2023.0327">Eyres et al. 2025</a> (IBAT terms)` }), "bottom-right");
+
+let mapLayer = null;
+let styleReady = false;
+async function tileSpec() {
+  const layer = await currentLayer();
+  return isBlend() ? { layer, blend } : { layer, band: currentBand(), taxon: layer.bands[currentBand()], scale, hideZeros: !state.zeros };
+}
+async function drawData() {
+  if (!styleReady || !(scale || blend)) return;
+  const spec = await tileSpec();
+  if (mapLayer) mapLayer.update(spec);
+  else mapLayer = new LifeMapLayer(map, protocol, spec, { opacity: state.opacity, before: "labels", maxzoom: 11 });
+}
+map.on("style.load", () => { styleReady = true; mapLayer = null; drawData(); });
+
+async function refresh({ rescale = true } = {}) {
+  status("computing colour range…");
+  if (rescale) await rebuildScale();
+  await drawData();
+  writeHash();
+  status(`${(await currentLayer()).name}${isArea() ? "" : isBlend() ? " · taxa blend" : " · " + label(TAXA[currentBand()])}`);
+  syncEnabled();
+}
+
+// --- controls -----------------------------------------------------------
+function seg(id, key, onChange) {
+  const el = $(id);
+  const set = (v) => { for (const b of el.querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.dataset.v === v)); };
+  set(state[key]);
+  el.addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    state[key] = b.dataset.v; set(b.dataset.v); onChange();
+  });
+}
+seg("kind", "kind", () => { syncEnabled(); state.autoVmax = true; refresh(); });
+seg("mode", "mode", () => refresh());
+for (const id of ["scenario", "curve"]) {
+  $(id).value = state[id];
+  $(id).addEventListener("change", (e) => { state[id] = e.target.value; state.autoVmax = true; refresh(); });
+}
+$("taxon").value = String(state.taxon);
+$("taxon").addEventListener("change", (e) => { state.taxon = +e.target.value; state.autoVmax = true; refresh(); });
+$("pct").value = state.pct;
+$("pct").addEventListener("input", (e) => { state.pct = parseFloat(e.target.value); $("pctLabel").textContent = `p${state.pct}`; });
+$("pct").addEventListener("change", () => { state.autoVmax = true; refresh(); });
+$("vmax").addEventListener("change", (e) => { const v = parseFloat(e.target.value); if (v > 0) { state.vmax = v; state.autoVmax = false; refresh(); } });
+$("autoBtn").addEventListener("click", () => { state.autoVmax = true; refresh(); });
+$("zeros").checked = state.zeros;
+$("zeros").addEventListener("change", (e) => { state.zeros = e.target.checked; refresh({ rescale: false }); });
+$("opacity").value = state.opacity;
+$("opacity").addEventListener("input", (e) => { state.opacity = parseFloat(e.target.value); if (mapLayer) mapLayer.setOpacity(state.opacity); writeHash(); });
+$("basemap").value = state.basemap;
+$("basemap").addEventListener("change", async (e) => {
+  state.basemap = e.target.value; applyTheme();
+  await rebuildScale();            // the theme changes the ramp, so recolour before the new style adds the layer
+  styleReady = false; mapLayer = null; map.setStyle(STYLES[state.basemap]); writeHash();
+});
+function syncEnabled() {
+  $("groupRow").classList.toggle("hidden", !isSingle());
+  $("curveRow").classList.toggle("hidden", isArea());
+  $("vmaxRow").classList.toggle("hidden", isBlend());
+  $("zerosRow").classList.toggle("hidden", isBlend());
+}
+function applyTheme() { document.documentElement.dataset.theme = theme(); }
+applyTheme(); syncEnabled();
+
+// --- hover and click ----------------------------------------------------
+let hoverTimer = null;
+map.on("mousemove", (e) => {
+  if (hoverTimer) return;
+  hoverTimer = setTimeout(async () => {
+    hoverTimer = null;
+    if (!(isBlend() ? blend : scale)) return; // colours not built yet
+    const { lat, lng } = e.lngLat;
+    const factor = pickLevel(map.getZoom(), store.levels, store.grid.res);
+    const layer = await currentLayer();
+    const where = `<b>${lat.toFixed(3)}°, ${lng.toFixed(3)}°</b> · ${factor === 1 ? "1′" : factor + "′ overview"}`;
+    if (isBlend()) {
+      const vs = await Promise.all(BLEND_BANDS.map((b) => layer.value(lat, lng, layer.bands[b], factor).catch(() => NaN)));
+      const c = blend.rgba(vs);
+      const chip = c[3] ? `<span class="chip" style="display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-2px;background:rgba(${c.join(",")})"></span> ` : "";
+      $("readout").innerHTML = `${where}<br>${chip}` + blend.names.map((n, i) => `<span style="white-space:nowrap">${label(n).toLowerCase()} <b>${fmt(vs[i], 3)}</b></span>`).join(" · ");
+      return;
+    }
+    const v = await layer.value(lat, lng, layer.bands[currentBand()], factor).catch(() => NaN);
+    $("readout").innerHTML = `${where} · <b>${fmt(v, 4)}</b>`;
+  }, 60);
+});
+
+map.on("click", async (e) => {
+  const { lat, lng } = e.lngLat;
+  const popup = new maplibregl.Popup({ maxWidth: "320px" }).setLngLat(e.lngLat).setHTML('<div class="popup">reading full-resolution data…</div>').addTo(map);
+  const g = store.grid, r = g.row(lat), c = g.col(lng);
+  if (r < 0) { popup.setHTML('<div class="popup">outside the grid</div>'); return; }
+  const window = { row0: r, row1: r + 1, col0: c, col1: c + 1 };
+  const [score, area] = await Promise.all([
+    store.layer(state.scenario, state.curve).then((l) => l.read({ taxon: null, window })),
+    store.area(state.scenario).then((l) => l.read({ window })),
+  ]).catch(() => [null, null]);
+  const vals = score ? Array.from(score.data) : TAXA.map(() => NaN);
+  const rows = TAXA.map((t, i) => {
+    const v = vals[i];
+    let sw = `<span class="swatch"></span>`;
+    if (isBlend() && blend && i > 0) sw = `<span class="swatch" style="background:${rgb(blend.swatches[t])}"></span>`;
+    else if (isSingle() && scale && Number.isFinite(v)) { const k = scale.index(v) * 4; sw = `<span class="swatch" style="background:rgb(${scale.lut[k]},${scale.lut[k + 1]},${scale.lut[k + 2]})"></span>`; }
+    return `<tr><td>${sw}${label(t)}</td><td>${fmt(v, 4)}</td></tr>`;
+  }).join("");
+  const mixed = isBlend() && blend ? blend.rgba(vals.slice(1)) : null;
+  const mixRow = mixed && mixed[3] ? `<tr><td><span class="swatch" style="background:rgba(${mixed.join(",")})"></span>blend</td><td></td></tr>` : "";
+  const a = area ? area.data[0] : NaN;
+  popup.setHTML(`<div class="popup"><b>${lat.toFixed(4)}°, ${lng.toFixed(4)}°</b><br>
+    ${state.scenario} · ${state.curve === "gompertz" ? "Gompertz" : "z = " + state.curve} · Δ extinctions / km²<br>
+    <table>${rows}${mixRow}<tr><td>area changed</td><td>${Number.isFinite(a) ? (a / 1e6).toPrecision(3) + " km²" : "no data"}</td></tr></table></div>`);
+});
+
+await refresh();
+</script>
+</body>
+</html>

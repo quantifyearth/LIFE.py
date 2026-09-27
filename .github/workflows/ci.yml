@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv python install ${{ matrix.python }}
+      - run: uv sync --locked --all-extras --dev
+      - run: uv run --locked pytest -q
+      - run: uv run --locked mypy
+      - if: matrix.python == '3.13'
+        run: uv build
+      - if: matrix.python == '3.13'
+        run: uv run --locked sphinx-build -b html -W --keep-going docs "$RUNNER_TEMP/life-docs"
