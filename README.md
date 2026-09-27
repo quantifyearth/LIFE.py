@@ -32,8 +32,8 @@ pip install life-metric
 
 Install `life-metric[xarray]` for xarray access or `life-metric[build]` to
 convert existing LIFE GeoTIFFs to Zarr. `open_store()` uses the [published
-v1.01 store](https://data.source.coop/tessera/life/v1.01) by default; pass a
-local store path to work offline.
+v1.01 store](https://data.source.coop/tessera/life/v1.01) by default, but there
+is also a v1.1~beta we are working on. You can also pass a local store path to work offline.
 
 ## Documentation and examples
 
@@ -59,9 +59,8 @@ redistributed in their original form, without written permission from IBAT
 
 ## See also
 
-Eyres A. et al. 2025, *LIFE: A metric for mapping the impact of land-cover
-change on global extinctions*, Phil. Trans. R. Soc. B 380:20230327,
-<https://doi.org/10.1098/rstb.2023.0327>. Data of record:
-<https://doi.org/10.5281/zenodo.14945383>. Published store:
-<https://source.coop/tessera/life>. JavaScript client:
-<https://github.com/quantifyearth/LIFE.js>.
+- Eyres A. et al. 2025, *LIFE: A metric for mapping the impact of land-cover change on global extinctions*, Phil. Trans. R. Soc. B 380:20230327,
+<https://doi.org/10.1098/rstb.2023.0327>.
+- Data of record: <https://doi.org/10.5281/zenodo.14945383>.
+- Published store: <https://source.coop/tessera/life>.
+- JavaScript client: <https://github.com/quantifyearth/LIFE.js>.
