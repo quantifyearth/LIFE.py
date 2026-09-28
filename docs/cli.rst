@@ -39,11 +39,15 @@ version, layer, coordinates, value and units. Missing scores become JSON
 DOWNLOAD
 --------
 
-``download`` saves one bounded layer as a compressed NumPy ``.npz`` file.
-It includes ``data``, pixel-centre ``lat`` and ``lon`` arrays, and a JSON
-``metadata`` string. The output must end in ``.npz``. The command requires a
-bounding box and refuses to replace an existing file unless
-``--overwrite`` is given.
+``download`` saves a bounded layer as GeoTIFF when the output ends in
+``.tif`` or ``.tiff``. Install ``life-metric[geo]`` for this format. The
+file includes the CRS, transform, units, band descriptions, citation, and
+data terms. Scores use NaN nodata; zero changed area remains valid data.
+
+An output ending in ``.npz`` saves a compressed NumPy archive containing
+``data``, pixel-centre ``lat`` and ``lon`` arrays, and JSON ``metadata``.
+Both formats require a bounding box and refuse to replace an existing file
+unless ``--overwrite`` is given.
 
 ``--all-bands`` includes every species group. ``--area`` selects changed
 area in square metres. Large regions should be split into smaller boxes;

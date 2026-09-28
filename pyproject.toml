@@ -1,7 +1,7 @@
 [project]
 name = "life-metric"
 version = "0.1.0"
-description = "Read the LIFE extinction-risk layers (Eyres et al. 2025) from a Zarr v3 store, with the colour scales to draw them"
+description = "Read LIFE extinction-risk maps into NumPy arrays, GeoTIFFs, and xarray datasets"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -17,6 +17,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
+    "affine>=2.4",
     "aiohttp>=3.9",
     "fsspec>=2024.1",
     "numpy>=1.26",
@@ -27,7 +28,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-xarray = ["xarray>=2024.1"]
+xarray = ["xarray>=2025.1.2", "rioxarray>=0.18"]
+geo = ["rasterio>=1.4", "shapely>=2"]
 build = ["rasterio>=1.4"]
 docs = ["sphinx>=8,<10", "sphinx-rtd-theme>=3,<4"]
 
@@ -43,7 +45,7 @@ Data = "https://zenodo.org/records/14945383"
 Paper = "https://doi.org/10.1098/rstb.2023.0327"
 
 [dependency-groups]
-dev = ["pytest>=8", "xarray>=2024.1", "rasterio>=1.4", "mypy>=1.10"]
+dev = ["pytest>=8", "xarray>=2025.1.2", "rioxarray>=0.18", "rasterio>=1.4", "shapely>=2", "mypy>=1.10"]
 
 [build-system]
 requires = ["hatchling"]
@@ -60,5 +62,5 @@ strict = true
 files = ["src"]
 
 [[tool.mypy.overrides]]
-module = ["fsspec", "fsspec.*", "rasterio", "rasterio.*"]
+module = ["fsspec", "fsspec.*", "rasterio", "rasterio.*", "rioxarray", "rioxarray.*"]
 ignore_missing_imports = true

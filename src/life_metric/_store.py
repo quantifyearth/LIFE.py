@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal, TypeAlias, cast
+from typing import Any, Literal, cast
 
 import numpy as np
 import zarr
@@ -19,13 +19,6 @@ from numpy.typing import ArrayLike, NDArray
 from ._catalogue import DEFAULT_CATALOGUE
 from ._grid import BBox, Grid, Window
 
-if TYPE_CHECKING:
-    import xarray as xr
-
-# Names come from the opened store, so these aliases cannot be closed Literals.
-Scenario: TypeAlias = str
-Curve: TypeAlias = str
-Taxon: TypeAlias = str
 Kind = Literal["score", "area"]
 FloatData = NDArray[np.float32] | NDArray[np.float64]
 
@@ -107,7 +100,7 @@ def open_store(source: str | os.PathLike[str] | zarr.Group = DEFAULT_STORE, *,
     """
     if isinstance(source, zarr.Group):
         return Store(source, str(source.store))
-    group = zarr.open_group(str(source), mode="r", storage_options=storage_options)
+    group = zarr.open_group(str(source), mode="r", zarr_format=3, storage_options=storage_options)
     return Store(group, str(source))
 
 
@@ -140,17 +133,6 @@ class Raster:
             return data
         band: FloatData = self.data[self.bands.index(name)]
         return band
-
-    def to_xarray(self) -> xr.DataArray:
-        """Return the raster as an xarray DataArray with lat, lon and band coordinates."""
-        import xarray as xr
-
-        if self.is_stack:
-            return xr.DataArray(self.data, dims=("band", "lat", "lon"),
-                                coords={"band": list(self.bands), "lat": self.grid.latitudes(), "lon": self.grid.longitudes()},
-                                name=self.layer)
-        return xr.DataArray(self.data, dims=("lat", "lon"),
-                            coords={"lat": self.grid.latitudes(), "lon": self.grid.longitudes()}, name=self.layer)
 
 
 class Layer:
@@ -387,19 +369,3 @@ class Store:
         if self.info.terms_of_use:
             lines += ["", f"terms of use: {self.info.terms_of_use}"]
         return "\n".join(lines)
-
-    def to_xarray(self, level: int = 1) -> xr.Dataset:
-        """Return the whole level as a lazy xarray Dataset with named taxa.
-
-        Needs the ``xarray`` extra. *level* is a reduction factor from
-        ``levels``; its group is taken from the multiscales layout.
-        """
-        import xarray as xr
-
-        # hand xarray the group's own zarr store, so any source the group was opened from works
-        path = "/".join(p for p in (self._group.path, self.level(level).path) if p)
-        ds: xr.Dataset = xr.open_zarr(self._group.store, group=path or None)
-        if "taxon" in ds.coords:
-            labels = str(ds["taxon"].attrs.get("flag_meanings", " ".join(self.taxa))).split()
-            ds = ds.assign_coords(taxon=("taxon", labels))
-        return ds

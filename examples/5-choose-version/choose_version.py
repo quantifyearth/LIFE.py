@@ -1,19 +1,19 @@
-"""List the catalogue's releases and open one by version."""
+"""List released versions and inspect one version's metadata."""
 
 import argparse
 
-from life_metric import Catalogue
+from life_metric import DEFAULT_CATALOGUE, metadata, versions
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("catalogue", nargs="?", help="catalogue directory or URL; default: published catalogue")
-parser.add_argument("--version", help="release to open; default: catalogue latest")
+parser.add_argument("catalogue", nargs="?", default=DEFAULT_CATALOGUE, help="catalogue directory or URL")
+parser.add_argument("--version", help="release to inspect; default: catalogue latest")
 args = parser.parse_args()
 
-catalogue = Catalogue(args.catalogue) if args.catalogue else Catalogue()
-for release in catalogue.releases():
-    print(release.version, release.url)
-
-store = catalogue.open(args.version)
-print("Opened", store.version)
-print("Scenarios:", ", ".join(store.scenarios))
-print("Curves:", ", ".join(store.curves))
+releases = versions(args.catalogue)
+for release in releases:
+    print(release["version"], release["url"])
+version = args.version or next(release["version"] for release in releases if release["latest"])
+attrs = metadata(version=version, catalogue=args.catalogue)
+print("Opened", attrs["version"])
+print("Scenarios:", ", ".join(attrs["scenarios"]))
+print("Curves:", ", ".join(attrs["curves"]))

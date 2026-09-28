@@ -254,14 +254,22 @@ def cmd_sample(args: argparse.Namespace) -> int:
 
 
 def cmd_download_region(args: argparse.Namespace) -> int:
-    """Save a bounded layer read from Zarr as a compressed NumPy archive."""
+    """Save a bounded layer as a GeoTIFF or compressed NumPy archive."""
     output: Path = args.output
-    if output.suffix != ".npz":
-        raise ValueError("the output path must end in .npz")
+    if output.suffix.lower() not in (".npz", ".tif", ".tiff"):
+        raise ValueError("the output path must end in .tif, .tiff, or .npz")
     if output.exists() and not args.overwrite:
         raise ValueError(f"{output} exists; pass --overwrite to replace it")
     store = open_store(_reader_source(args))
     layer = _selected_layer(store, args)
+    if output.suffix.lower() in (".tif", ".tiff"):
+        from ._export import download
+
+        download(layer.name, output, bounds=args.bbox, source=_reader_source(args),
+                 taxon=None if args.all_bands and not args.area else args.taxon,
+                 level=args.level, overwrite=args.overwrite)
+        console.print(f"Saved {layer.name} to {output}")
+        return 0
     bbox = BBox(*args.bbox)
     window = layer.grid(args.level).window(bbox)
     bands = 1 if args.area or not args.all_bands else len(layer.bands)
@@ -325,8 +333,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--json", action="store_true", help="write one JSON object; missing values become null")
     s.set_defaults(func=cmd_sample)
 
-    download = sub.add_parser("download", help="save a bounded layer from a store as .npz")
-    download.add_argument("output", type=Path, help="output .npz file")
+    download = sub.add_parser("download", help="save a bounded layer as GeoTIFF or .npz")
+    download.add_argument("output", type=Path, help="output .tif, .tiff, or .npz file")
     _add_reader_source(download)
     download.add_argument("--bbox", nargs=4, type=float, required=True,
                           metavar=("WEST", "SOUTH", "EAST", "NORTH"), help="region in degrees")
@@ -411,7 +419,8 @@ def main(argv: list[str] | None = None) -> None:
     except ModuleNotFoundError as exc:
         if exc.name != "rasterio":
             raise
-        error_console.print("Error: install life-metric[build] to use admin commands")
+        extra = "build" if args.cmd == "admin" else "geo"
+        error_console.print(f"Error: install life-metric[{extra}] for this command", markup=False)
         status = 1
     except (FileNotFoundError, KeyError, ValueError, OSError, RuntimeError) as exc:
         error_console.print(f"Error: {exc}", markup=False, highlight=False)

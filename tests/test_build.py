@@ -9,7 +9,8 @@ rasterio = pytest.importorskip("rasterio")
 import zarr  # noqa: E402
 from rasterio.transform import from_origin  # noqa: E402
 
-from life_metric import dataset as L
+from life_metric import dataset as L, open_dataset
+from life_metric._store import open_store
 from life_metric.build.convert import Options, convert_layers, create_store, finalize
 from life_metric.build.verify import verify_layers
 
@@ -55,7 +56,6 @@ def test_roundtrip(raw_dir: Path, tmp_path: Path) -> None:
     model = root.attrs["data_model"]
     assert "score * area_changed / 1e6" in model["pixel_total"]
     assert "not totals" in model["overviews"]
-    from life_metric import open_store
     assert open_store(store).data_model == model
     a = root["0/arable_0.25"]
     assert a.shape == (5, H + 2, W) and a.chunks == (1, 32, 32)
@@ -83,7 +83,6 @@ def test_roundtrip(raw_dir: Path, tmp_path: Path) -> None:
 
 def test_xarray_open(raw_dir: Path, tmp_path: Path) -> None:
     xr = pytest.importorskip("xarray")
-    from life_metric import open_store
 
     store = tmp_path / "life.zarr"
     opts = Options(chunk=32, workers=2, height=H, width=W)
@@ -91,7 +90,7 @@ def test_xarray_open(raw_dir: Path, tmp_path: Path) -> None:
     convert_layers(store, raw_dir, [L.layer_by_name("restore_gompertz")], opts)
     finalize(store)
 
-    ds = open_store(store).to_xarray()
+    ds = open_dataset(store)
     assert list(ds["taxon"].values) == list(L.TAXA)
     with rasterio.open(raw_dir / "scaled_restore_gompertz.tif") as src:
         expect = src.read(3)

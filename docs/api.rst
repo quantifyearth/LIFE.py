@@ -1,46 +1,37 @@
 Python API
 ==========
 
-Stores and catalogues
----------------------
+Data access
+-----------
 
-.. autofunction:: life_metric.open_store
+Regional reads return a NumPy array and ``affine.Affine`` transform, as in
+rasterio's masking functions. Point samples return a NumPy array. Coordinates
+are EPSG:4326; bounds use west, south, east, north, and point pairs use
+longitude, latitude. ``open_dataset`` returns a native xarray Dataset with
+named taxa and a rioxarray accessor.
 
-.. autoclass:: life_metric.Store
-   :members:
+.. autofunction:: life_metric.read
 
-.. autoclass:: life_metric.Catalogue
-   :members:
+.. autofunction:: life_metric.sample
 
-.. autoclass:: life_metric.Release
-   :members:
+.. autofunction:: life_metric.open_dataset
 
-.. autoclass:: life_metric.Info
-   :members:
+GeoTIFF download
+----------------
 
-Layers, rasters and grids
--------------------------
+.. autofunction:: life_metric.download
 
-.. autoclass:: life_metric.Layer
-   :members:
+Dataset descriptions and releases
+---------------------------------
 
-.. autoclass:: life_metric.Raster
-   :members:
+.. autofunction:: life_metric.metadata
 
-.. autoclass:: life_metric.Level
-   :members:
-
-.. autoclass:: life_metric.BBox
-   :members:
-
-.. autoclass:: life_metric.Window
-   :members:
-
-.. autoclass:: life_metric.Grid
-   :members:
+.. autofunction:: life_metric.versions
 
 Colour
 ------
+
+These functions accept ordinary NumPy arrays.
 
 .. autofunction:: life_metric.colour.make_scale
 

@@ -42,6 +42,10 @@ def store_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     root = zarr.create_group(path, zarr_format=3)
     root.attrs.update({
         "version": "0.9",
+        "references": "Test citation.",
+        "terms_of_reference": "Non-commercial use only. IBAT.",
+        "spatial:transform": [RES, 0.0, -180.0, 0.0, -RES, 90.0],
+        "spatial:shape": [H, W],
         "scenarios": {"arable": "conversion", "restore": "reversion"},
         "curves": {"0.25": "main", "gompertz": "gompertz"},
         "taxa": {t: t for t in TAXA},
@@ -50,7 +54,8 @@ def store_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     for asset, factor in (("0", 1), ("1", 2)):
         g = root.create_group(asset)
         rows, cols = H // factor, W // factor
-        g.attrs.update({"factor": factor, "spatial:transform": [RES * factor, 0.0, -180.0, 0.0, -RES * factor, 90.0]})
+        g.attrs.update({"factor": factor, "spatial:shape": [rows, cols],
+                        "spatial:transform": [RES * factor, 0.0, -180.0, 0.0, -RES * factor, 90.0]})
         g.create_array("lat", data=90 - (np.arange(rows) + 0.5) * RES * factor, dimension_names=("lat",))
         g.create_array("lon", data=-180 + (np.arange(cols) + 0.5) * RES * factor, dimension_names=("lon",))
         g.create_array("taxon", data=np.arange(5, dtype="int8"), dimension_names=("taxon",))

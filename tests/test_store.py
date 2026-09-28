@@ -1,10 +1,15 @@
 import os
+from contextlib import contextmanager
 from pathlib import Path
 
+import aiohttp
 import numpy as np
 import pytest
 
-from life_metric import BBox, Catalogue, Grid, Window, open_store
+from life_metric import open_dataset
+from life_metric._catalogue import Catalogue
+from life_metric._grid import BBox, Grid, Window
+from life_metric._store import open_store
 from tests.conftest import H, RES, W, band_values
 
 
@@ -147,13 +152,13 @@ def test_catalogue(catalogue_dir: Path) -> None:
 def test_xarray(store_path: Path) -> None:
     xr = pytest.importorskip("xarray")
     store = open_store(store_path)
-    ds = store.to_xarray()
+    ds = open_dataset(store_path)
     assert list(ds["taxon"].values) == ["all", "AMPHIBIA", "AVES", "MAMMALIA", "REPTILIA"]
     import zarr
-    ds2 = open_store(zarr.open_group(store_path, mode="r")).to_xarray(2)  # opened from a group, not a path
+    ds2 = open_dataset(zarr.open_group(store_path, mode="r"), level=2)  # opened from a group, not a path
     assert ds2["arable_0.25"].shape == (5, H // 2, W // 2)
     assert ds["arable_0.25"].sel(taxon="AVES").shape == (H, W)
-    da = store.layer("arable", "0.25").read("AVES").to_xarray()
+    da = ds["arable_0.25"].sel(taxon="AVES")
     assert isinstance(da, xr.DataArray) and da.dims == ("lat", "lon")
 
 
@@ -202,29 +207,45 @@ def _reachable(url: str) -> bool:
         return False
 
 
+@contextmanager
+def _remote_reads():
+    """Skip unavailable HTTP transfers while keeping schema failures visible."""
+    try:
+        yield {"client_kwargs": {"timeout": aiohttp.ClientTimeout(total=20)}}
+    except (aiohttp.ClientError, TimeoutError) as exc:
+        pytest.skip(f"source.coop transfer unavailable: {type(exc).__name__}: {exc}")
+
+
 @pytest.mark.skipif(not _reachable("https://data.source.coop/tessera/life/v1.01/zarr.json"), reason="source.coop not reachable")
 def test_published_store() -> None:
-    from life_metric import DEFAULT_STORE, open_store
+    from life_metric import metadata, read, sample
 
-    store = open_store()  # no argument: the published store
-    assert store.source == DEFAULT_STORE and store.version == "1.01"
-    assert store.levels == (1, 2, 4, 8, 16)
-    layer = store.layer("arable", "0.25")
-    grid = layer.grid()
-    assert layer.value(grid.latitudes()[5100], grid.longitudes()[11520]) == pytest.approx(4.533233e-05, rel=1e-6)
-    box = BBox(-0.5, 51.9, 0.6, 52.5)
-    r = layer.read("all", bbox=box, level=4)
-    win = store.level_grid(4).window(box)
-    assert r.data.shape == (win.height, win.width) == (10, 17)
+    with _remote_reads() as options:
+        assert metadata(storage_options=options)["version"] == "1.01"
+        grid = Grid(21600, 10800, 1 / 60, -180.0, 90.0)
+        value = sample("arable_0.25", [(grid.longitudes()[11520], grid.latitudes()[5100])],
+                       storage_options=options)[0]
+        assert value == pytest.approx(4.533233e-05, rel=1e-6)
+        values, transform = read("arable_0.25", bounds=(-0.5, 51.9, 0.6, 52.5), level=4,
+                                 storage_options=options)
+        assert values.shape == (10, 17) and values.dtype == np.dtype("float32")
+        assert transform.a == pytest.approx(4 / 60)
 
 
 @pytest.mark.skipif(not _reachable("https://data.source.coop/tessera/life/v1.1~beta1/zarr.json"), reason="published beta not reachable")
 def test_published_beta_store() -> None:
-    store = Catalogue().open("1.1~beta1")
-    assert store.version == "1.1~beta1" and store.levels == (1, 2, 4, 8, 16)
-    assert list(store.scenarios) == ["arable", "pasture", "urban", "restore", "restore_agriculture", "restore_all"]
-    assert list(store.curves) == ["0.25"] and len(store.layer_names()) == 12
-    assert "overview" in store.data_model["overviews"].lower()
-    score = store.layer("restore_agriculture", "0.25")
-    assert score.read(window=Window(5000, 5001, 11000, 11001)).data.dtype == np.dtype("float64")
-    assert store.area("restore_all").read(window=Window(5000, 5001, 11000, 11001)).data.dtype == np.dtype("float64")
+    from life_metric import metadata, read
+    from rasterio.windows import Window as RioWindow
+
+    with _remote_reads() as options:
+        attrs = metadata(version="1.1~beta1", storage_options=options)
+        assert attrs["version"] == "1.1~beta1"
+        assert list(attrs["scenarios"]) == ["arable", "pasture", "urban", "restore", "restore_agriculture", "restore_all"]
+        assert list(attrs["curves"]) == ["0.25"]
+        assert "overview" in attrs["data_model"]["overviews"].lower()
+        values, _ = read("restore_agriculture_0.25", version="1.1~beta1", window=RioWindow(11000, 5000, 1, 1),
+                         storage_options=options)
+        assert values.dtype == np.dtype("float64")
+        with open_dataset(version="1.1~beta1", storage_options=options) as dataset:
+            assert dataset["restore_all_area_changed"].isel(lat=5000, lon=11000).to_numpy().dtype == np.dtype("float64")
+            assert dataset.rio.crs.to_epsg() == 4326

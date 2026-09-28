@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 import numpy as np
+import rasterio
 
 from life_metric.cli import main
 
@@ -66,24 +67,14 @@ def test_info_and_releases_json(store_path: Path, catalogue_dir: Path,
     assert [entry["version"] for entry in releases["versions"]] == ["0.9", "0.10"]
 
 
-def test_documented_example(store_path: Path) -> None:
-    example = Path(__file__).parents[1] / "examples" / "2-query-point" / "query_point.py"
-    result = subprocess.run([sys.executable, str(example), str(store_path), "22.5", "-112.5"],
-                            capture_output=True, text=True, check=True)
-    assert "version 0.9" in result.stdout
-    assert "Scenarios: arable, restore" in result.stdout
-    lines = result.stdout.splitlines()
-    assert float(lines[3].split()[1]) == pytest.approx(0.000101)
-    assert float(lines[4].split()[2]) == pytest.approx(101000)
-
-
 @pytest.mark.parametrize(("step", "script", "extra", "expected"), [
-    ("1-open-store", "open_store.py", [], "scenarios:"),
-    ("3-sample-points", "sample_points.py", [], "convert"),
-    ("4-read-region", "read_region.py", ["--bbox", "-135", "15", "-105", "45"], "pixels"),
-    ("6-colour-map", "colour_map.py", ["--bbox", "-135", "15", "-105", "45"], "Wrote"),
-    ("7-taxa-blend", "taxa_blend.py", ["--bbox", "-135", "15", "-105", "45", "--level", "2"], "wrote"),
-    ("8-xarray-levels", "xarray_levels.py", ["--bbox", "-135", "15", "-105", "45", "--level", "2"], "Region at level 2"),
+    ("1-read-region", "read_region.py", ["--bounds", "-135", "15", "-105", "45"], "pixels"),
+    ("2-mask-polygon", "mask_polygon.py", ["--bounds", "-135", "15", "-105", "45"], "Included pixels"),
+    ("3-download-geotiff", "download_geotiff.py", ["--bounds", "-135", "15", "-105", "45"], "Saved"),
+    ("4-sample-points", "sample_points.py", [], "convert"),
+    ("6-xarray", "xarray_example.py", ["--bounds", "-135", "15", "-105", "45", "--level", "2"], "Region at level 2"),
+    ("7-colour-map", "colour_map.py", ["--bounds", "-135", "15", "-105", "45"], "Wrote"),
+    ("8-taxa-blend", "taxa_blend.py", ["--bounds", "-135", "15", "-105", "45", "--level", "2"], "wrote"),
 ])
 def test_reader_examples_run_offline(store_path: Path, tmp_path: Path, step: str, script: str,
                                      extra: list[str], expected: str) -> None:
@@ -92,10 +83,17 @@ def test_reader_examples_run_offline(store_path: Path, tmp_path: Path, step: str
     if "colour" in step or "blend" in step:
         output = tmp_path / "map.png"
         command += ["--output", str(output)]
+    if "geotiff" in step:
+        output = tmp_path / "region.tif"
+        command += ["--output", str(output)]
     result = subprocess.run(command, capture_output=True, text=True, check=True)
     assert expected in result.stdout
     if "colour" in step or "blend" in step:
         assert output.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+    if "geotiff" in step:
+        with rasterio.open(output) as dataset:
+            assert dataset.crs.to_epsg() == 4326
+            assert dataset.read(1).shape == (2, 2)
 
 
 def test_version_example_runs_offline(catalogue_dir: Path) -> None:
@@ -136,10 +134,11 @@ def test_download_refuses_overwrite(store_path: Path, tmp_path: Path,
 def test_documented_cli_example(store_path: Path, tmp_path: Path) -> None:
     package_root = Path(__file__).parents[1]
     script = package_root / "examples" / "cli.sh"
-    output = tmp_path / "region.npz"
+    output = tmp_path / "region.tif"
     env = dict(os.environ, PATH=f"{package_root / '.venv' / 'bin'}:{os.environ['PATH']}")
     result = subprocess.run(["sh", str(script), str(store_path), str(output)],
                             capture_output=True, text=True, check=True, env=env)
     assert json.loads(result.stdout.splitlines()[0])["layer"] == "arable_0.25"
-    with np.load(output, allow_pickle=False) as archive:
-        assert archive["data"].size > 0
+    with rasterio.open(output) as dataset:
+        assert dataset.read(1).size > 0
+        assert dataset.tags()["terms_of_use"] == "Non-commercial use only. IBAT."

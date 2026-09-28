@@ -1,9 +1,10 @@
 LIFE.py
 =======
 
-LIFE.py reads LIFE extinction-risk maps from local or published Zarr v3 stores.
-Install the ``life-metric`` package for point and region queries, resolution
-levels, and the command-line tool. The original pipeline for generating LIFE
+LIFE.py reads LIFE extinction-risk maps from Zarr v3 into NumPy arrays,
+GeoTIFFs, and native xarray datasets. Install ``life-metric`` for regional
+reads and point samples, ``life-metric[geo]`` for polygon masks and GeoTIFF
+export, or ``life-metric[xarray]`` for xarray and rioxarray. The original pipeline for generating LIFE
 from source data is in `quantifyearth/LIFE
 <https://github.com/quantifyearth/LIFE>`_.
 

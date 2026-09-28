@@ -1,23 +1,23 @@
 # Examples
 
-Install the package with `uv sync` from the repository root. Run each example
-with `uv run python examples/<step>/<script>.py`. Without a store argument,
-the reader examples open the published v1.01 store. Pass a local Zarr store
-path to work offline.
+Run `uv sync` from the repository root, then follow the numbered steps.
+Each example has a short README and a runnable script. Pass a local Zarr
+store to work offline. Without a source, reads use the published v1.01 store.
 
-Each step builds on the previous one:
+1. [Read a region with NumPy](1-read-region/README.md).
+2. [Mask a polygon](2-mask-polygon/README.md).
+3. [Download a GeoTIFF](3-download-geotiff/README.md).
+4. [Sample points](4-sample-points/README.md).
+5. [Choose a version](5-choose-version/README.md).
+6. [Use xarray](6-xarray/README.md).
+7. [Colour a map](7-colour-map/README.md).
+8. [Blend taxa](8-taxa-blend/README.md).
 
-1. [Open a store](1-open-store/README.md) and inspect its descriptions.
-2. [Query a point](2-query-point/README.md) for one score and changed area.
-3. [Sample points](3-sample-points/README.md) in one read per layer.
-4. [Read a region](4-read-region/README.md) with its pixel grid.
-5. [Choose a version](5-choose-version/README.md) from a catalogue.
-6. [Colour a map](6-colour-map/README.md) and write a PNG.
-7. [Blend taxa](7-taxa-blend/README.md) into one map.
-8. [Use xarray](8-xarray-levels/README.md) to explore an overview lazily.
+The scripts are exercised against a small local store by the test suite.
+Polygon masks and GeoTIFF downloads use `life-metric[geo]`. Native xarray
+access uses `life-metric[xarray]`. The separate [`cli.sh`](cli.sh) demonstrates
+point queries and GeoTIFF downloads.
 
-The separate [`cli.sh`](cli.sh) shows the query and download commands.
-Store maintainers can use [`build_store.py`](build_store.py) for existing
-v1.01 GeoTIFFs or [`build_beta_store.py`](build_beta_store.py) for the beta.
-The pipeline that generates LIFE maps from source data is
-[quantifyearth/LIFE](https://github.com/quantifyearth/LIFE).
+Store maintainers can convert existing GeoTIFFs with [`build_store.py`](build_store.py)
+or [`build_beta_store.py`](build_beta_store.py). The original LIFE source
+pipeline is [quantifyearth/LIFE](https://github.com/quantifyearth/LIFE).
