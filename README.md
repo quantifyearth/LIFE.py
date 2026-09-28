@@ -34,9 +34,9 @@ pip install 'life-metric[xarray]'  # xarray datasets with a rio accessor
 ```
 
 Reads use the [published v1.01 store](https://data.source.coop/tessera/life/v1.01)
-by default. Pass `source="/path/to/v1.01"` for a local store, or
-`version="1.1~beta1"` for the beta. `metadata()` returns dataset descriptions
-and data terms as a dictionary; `versions()` lists release dictionaries.
+by default. Pass `source="/path/to/v1.01"` for a local store.
+`metadata()` returns dataset descriptions and data terms as a dictionary;
+`versions()` lists release dictionaries.
 
 ## Geospatial workflows
 
@@ -63,7 +63,7 @@ With the `xarray` extra, use native selection and analysis:
 ```python
 from life_metric import open_dataset
 
-with open_dataset(version="1.1~beta1") as dataset:
+with open_dataset() as dataset:
     birds = dataset["arable_0.25"].sel(taxon="AVES")
     region = birds.sel(lon=slice(43, 51), lat=slice(-12, -26))
     print(region.to_numpy(), region.rio.crs)
