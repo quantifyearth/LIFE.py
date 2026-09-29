@@ -47,7 +47,7 @@ def metadata(source: Source | None = None, *, version: str | None = None,
 
 
 def versions(catalogue: str | os.PathLike[str] = DEFAULT_CATALOGUE) -> list[dict[str, Any]]:
-    """Return release dictionaries from a catalogue, oldest first.
+    """Return release dictionaries from a catalogue in version order.
 
     Each entry contains ``version``, ``url``, ``path``, ``released``, ``doi``,
     ``description``, and a boolean ``latest`` flag. Unspecified metadata is None.

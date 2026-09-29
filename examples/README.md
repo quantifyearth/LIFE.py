@@ -1,6 +1,14 @@
 # Examples
 
-Run `uv sync` from the repository root, then follow the numbered steps.
+Clone the repository and install the example dependencies.
+
+```sh
+git clone https://github.com/quantifyearth/LIFE.py.git
+cd LIFE.py
+uv sync
+```
+
+Run the examples from the repository root, following the numbered steps.
 Each example has a short README and a runnable script. Pass a local Zarr
 store to work offline. Without a source, reads use the published v1.01 store.
 

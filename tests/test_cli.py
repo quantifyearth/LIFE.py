@@ -55,6 +55,19 @@ def test_query_reports_available_scenarios(store_path: Path,
     assert "choose from arable, restore" in capsys.readouterr().err
 
 
+def test_query_rejects_nonfinite_coordinates(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        main(["query", "nan", "47", "--json"])
+    assert exit_info.value.code == 1
+    assert "coordinates must be finite" in capsys.readouterr().err
+
+
+def test_releases_handles_empty_catalogue(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    (tmp_path / "versions.json").write_text('{"versions": {}}')
+    run_cli(["releases", "--catalogue", str(tmp_path), "--json"])
+    assert json.loads(capsys.readouterr().out) == {"latest": None, "versions": []}
+
+
 def test_info_and_releases_json(store_path: Path, catalogue_dir: Path,
                                 capsys: pytest.CaptureFixture[str]) -> None:
     run_cli(["info", str(store_path), "--json"])
@@ -118,6 +131,8 @@ def test_download_region_npz(store_path: Path, tmp_path: Path,
         metadata = json.loads(str(archive["metadata"]))
         assert metadata["bands"] == ["AVES"]
         assert metadata["units"] == "extinctions km-2"
+        assert metadata["citation"] == "Test citation."
+        assert metadata["terms_of_use"] == "Non-commercial use only. IBAT."
 
 
 def test_download_refuses_overwrite(store_path: Path, tmp_path: Path,

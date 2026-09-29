@@ -21,4 +21,4 @@ Run the [script](mask_polygon.py) from the repository root.
 uv run --extra geo python examples/2-mask-polygon/mask_polygon.py /path/to/v1.01
 ```
 
-Next, [download a geotiff](../3-download-geotiff/README.md).
+Next, [download a GeoTIFF](../3-download-geotiff/README.md).

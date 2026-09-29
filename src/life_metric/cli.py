@@ -205,7 +205,7 @@ def cmd_releases(args: argparse.Namespace) -> int:
     """List stores in a local or published catalogue."""
     catalogue = Catalogue(args.catalogue)
     releases = catalogue.releases()
-    latest = catalogue.latest().version
+    latest = catalogue.latest().version if releases else None
     if args.json:
         print(json.dumps({"latest": latest, "versions": [vars(release) for release in releases]}, indent=2))
     else:
@@ -234,6 +234,8 @@ def _selected_layer(store: Store, args: argparse.Namespace) -> Layer:
 
 def cmd_sample(args: argparse.Namespace) -> int:
     """Read a score or changed-area value at one point through Zarr."""
+    if not all(math.isfinite(value) for value in (args.lat, args.lon)):
+        raise ValueError("coordinates must be finite latitude and longitude values")
     store = open_store(_reader_source(args))
     layer = _selected_layer(store, args)
     value = layer.value(args.lat, args.lon, args.taxon, level=args.level)
@@ -280,7 +282,8 @@ def cmd_download_region(args: argparse.Namespace) -> int:
     output.parent.mkdir(parents=True, exist_ok=True)
     metadata = {"version": store.version, "source": store.source, "layer": layer.name,
                 "bands": raster.bands, "units": layer.units, "level": args.level,
-                "bounds": vars(raster.grid.bounds)}
+                "bounds": vars(raster.grid.bounds), "citation": store.info.citation,
+                "terms_of_use": store.info.terms_of_use}
     temp_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(dir=output.parent, prefix=f".{output.name}.",

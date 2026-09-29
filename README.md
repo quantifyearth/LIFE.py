@@ -1,6 +1,10 @@
-# LIFE.py - Python access client for LIFE extinction-risk maps
+# LIFE.py
 
-## Synopsis
+## NAME
+
+life-metric reads LIFE extinction-risk maps into NumPy arrays and GeoTIFFs.
+
+## SYNOPSIS
 
 ```python
 import numpy as np
@@ -10,95 +14,73 @@ values, transform = read("arable_0.25", taxon="AVES", bounds=(43, -26, 51, -12))
 print(np.nanmean(values))
 ```
 
-## Description
+## DESCRIPTION
 
-LIFE.py reads regional LIFE data into NumPy arrays, GeoTIFFs, and native
-xarray datasets. Bounds use west, south, east, north. Regional reads return
-an array and an `affine.Affine` transform in EPSG:4326. You can use NumPy,
-rasterio, Shapely, and xarray without learning a separate raster model.
-The library selects dataset versions and reads the requested Zarr pixels.
+LIFE.py reads regions and samples points from LIFE Zarr v3 stores. Regional
+reads return a NumPy array and an Affine transform in EPSG:4326. Polygon
+reads return NumPy masked arrays. The library also opens native xarray
+Datasets with a rioxarray accessor.
 
-LIFE maps the change in expected extinctions when land use changes. Scores
-are per square kilometre of land changed: positive values mean more expected
-extinctions, and negative values mean fewer. Changed area is in square metres;
-zero area is valid data. See the [data guide](docs/data.rst) for scenarios,
-units, versions, and overview limits. The source pipeline is
-[quantifyearth/LIFE](https://github.com/quantifyearth/LIFE).
+Scores measure the change in expected extinctions per square kilometre of
+land changed. Positive scores mean more extinctions, and negative scores mean
+fewer. Missing scores are NaN. Changed-area layers use square metres; zero
+scores and zero area are valid data.
 
-## Installation
+## INSTALLATION
 
 ```sh
 pip install life-metric
-pip install 'life-metric[geo]'     # polygon masking and GeoTIFF export
-pip install 'life-metric[xarray]'  # xarray datasets with a rio accessor
 ```
 
-Reads use the [published v1.01 store](https://data.source.coop/tessera/life/v1.01)
-by default. Pass `source="/path/to/v1.01"` for a local store.
-`metadata()` returns dataset descriptions and data terms as a dictionary;
-`versions()` lists release dictionaries.
+Python 3.11 or newer is required. Install `life-metric[geo]` for Shapely
+polygon masks and GeoTIFF downloads, or `life-metric[xarray]` for xarray
+and rioxarray.
 
-## Geospatial workflows
+## USAGE
 
-With the `geo` extra installed, pass Shapely or GeoJSON polygons to `read()`.
-The result is a NumPy masked array. Geometry coordinates use the supplied
-CRS; the returned raster remains in EPSG:4326.
+Reads use the published v1.01 store by default. Pass `source` to open a local
+store or URL. `metadata()` describes its scenarios, curves, taxa, and terms.
+`versions()` lists releases, and `version` selects one of them.
 
-```python
-from shapely.geometry import box
-from life_metric import read
+`read()` requires bounds, a rasterio pixel window, or a Shapely or GeoJSON
+polygon. Bounds use `(west, south, east, north)` in WGS84 degrees.
+`sample()` takes `(longitude, latitude)` pairs. Use native resolution for
+calculations; coarser levels are intended for display.
 
-values, transform = read("arable_0.25", geometry=box(43, -26, 51, -12), crs="EPSG:4326")
-print(values.mean())
-```
-
-Save a region as a GeoTIFF for an existing rasterio workflow:
+The CLI queries points and downloads bounded regions. Its query coordinates
+are latitude followed by longitude. Missing scores become JSON `null`.
 
 ```sh
+life-metric query -19.5 47 --taxon AVES --json
 life-metric download region.tif --bbox 43 -26 51 -12 --taxon AVES
 ```
 
-With the `xarray` extra, use native selection and analysis:
+GeoTIFF downloads retain the CRS, units, citation, and data terms. They
+require the `geo` extra and are limited to 16 million values per file.
+Run `life-metric --help` for the command list.
 
-```python
-from life_metric import open_dataset
+## DOCUMENTATION
 
-with open_dataset() as dataset:
-    birds = dataset["arable_0.25"].sel(taxon="AVES")
-    region = birds.sel(lon=slice(43, 51), lat=slice(-12, -26))
-    print(region.to_numpy(), region.rio.crs)
-```
+The [tutorial](https://github.com/quantifyearth/LIFE.py/blob/main/docs/tutorial.rst)
+and [numbered examples](https://github.com/quantifyearth/LIFE.py/tree/main/examples)
+cover NumPy, polygons, rasterio, point samples, xarray, and colour maps.
+The [API reference](https://github.com/quantifyearth/LIFE.py/blob/main/docs/api.rst),
+[CLI guide](https://github.com/quantifyearth/LIFE.py/blob/main/docs/cli.rst), and
+[data guide](https://github.com/quantifyearth/LIFE.py/blob/main/docs/data.rst)
+describe the options and data meanings.
 
-`sample()` takes `(longitude, latitude)` point pairs and returns NumPy
-values. The CLI's `query` command takes latitude then longitude:
+## TERMS OF USE
 
-```sh
-life-metric query -19.5 47 --scenario arable --curve 0.25 --json
-```
+The code is MIT licensed. The data may not be used for commercial or
+revenue-generating purposes, nor redistributed in their original form,
+without written permission from IBAT (ibat@ibat-alliance.org).
+Read `metadata()["terms_of_reference"]` for the full terms.
 
-## Documentation and examples
+## SEE ALSO
 
-- [Data guide](docs/data.rst) explains score meaning, versions, and Zarr layout.
-- [Tutorial](docs/tutorial.rst) follows the runnable examples.
-- [Python API](docs/api.rst) documents reads, samples, datasets, and downloads.
-- [CLI guide](docs/cli.rst) describes queries, downloads, and store maintenance.
-- [Numbered examples](examples/README.md) start with NumPy statistics, polygon
-  masks, and rasterio, then cover versions, xarray, and colour maps.
-
-Store maintainers can install `life-metric[build]` and use the
-`life-metric admin` commands to convert existing GeoTIFFs to Zarr.
-
-## Terms of use
-
-The data may not be used for commercial or revenue-generating purposes, nor
-redistributed in their original form, without written permission from IBAT
-(ibat@ibat-alliance.org). Read `metadata()["terms_of_reference"]` for the
-full terms. GeoTIFF downloads include them in the file's metadata.
-
-## See also
-
-- Eyres A. et al. 2025, *LIFE: A metric for mapping the impact of land-cover change on global extinctions*, Phil. Trans. R. Soc. B 380:20230327,
-  <https://doi.org/10.1098/rstb.2023.0327>.
-- Data of record: <https://doi.org/10.5281/zenodo.14945383>.
-- Published store: <https://source.coop/tessera/life>.
-- JavaScript client: <https://github.com/quantifyearth/LIFE.js>.
+The method is described by [Eyres et al. (2025), *LIFE: A metric for mapping the impact of land-cover change on global extinctions*](https://doi.org/10.1098/rstb.2023.0327).
+The [data of record](https://doi.org/10.5281/zenodo.14945383) and
+[published stores](https://source.coop/tessera/life) are available separately.
+See [LIFE.js](https://github.com/quantifyearth/LIFE.js) for the JavaScript client
+and [quantifyearth/LIFE](https://github.com/quantifyearth/LIFE) to regenerate
+LIFE from source data.

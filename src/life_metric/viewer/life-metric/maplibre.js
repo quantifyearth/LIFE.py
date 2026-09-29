@@ -42,20 +42,27 @@ export class LifeProtocol {
         maplibre.removeProtocol?.(this.name);
     }
     /** The handler MapLibre calls for each tile. */
-    handler = async ({ url }) => {
+    handler = async ({ url }, abortController) => {
+        abortController.signal.throwIfAborted();
         const { id, z, x, y } = parseTileUrl(url, this.name);
         const spec = this.specs.get(id);
         const size = spec?.tileSize ?? 256;
         if (!spec)
             return { data: await toImageBitmap({ width: size, height: size, data: new Uint8ClampedArray(size * size * 4) }) };
-        const tile = await paintTile(spec.layer, {
+        const tile = await paintTile(spec.client, spec.layer, {
+            signal: abortController.signal,
             z, x, y, size,
             ...(spec.taxon !== undefined && { taxon: spec.taxon }),
             ...(spec.scale !== undefined && { scale: spec.scale }),
             ...(spec.blend !== undefined && { blend: spec.blend }),
             ...(spec.hideZeros !== undefined && { hideZeros: spec.hideZeros }),
         });
-        return { data: await toImageBitmap(tile) };
+        const bitmap = await toImageBitmap(tile);
+        if (abortController.signal.aborted) {
+            bitmap.close();
+            abortController.signal.throwIfAborted();
+        }
+        return { data: bitmap };
     };
     /** Register a spec and return the id that names it in tile URLs. */
     register(spec) {

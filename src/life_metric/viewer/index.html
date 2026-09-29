@@ -9,6 +9,8 @@
 <script type="importmap">
 { "imports": {
     "zarrita": "https://cdn.jsdelivr.net/npm/zarrita@0.7.5/+esm",
+    "@turf/boolean-point-in-polygon": "https://cdn.jsdelivr.net/npm/@turf/boolean-point-in-polygon@7.4.0/+esm",
+    "geotiff": "https://cdn.jsdelivr.net/npm/geotiff@3.0.5/+esm",
     "maplibre-gl": "https://cdn.jsdelivr.net/npm/maplibre-gl@6.11.2/dist/maplibre-gl.mjs",
     "life-metric": "./life-metric/index.js"
 } }
@@ -158,7 +160,7 @@
 
 <script type="module">
 import * as maplibregl from "maplibre-gl";
-import { LifeStore, LifeProtocol, LifeMapLayer, OSM_STYLE, makeScale, makeBlend, percentileAbs, pickLevel, TAXA } from "life-metric";
+import { open, versions, LifeProtocol, LifeMapLayer, OSM_STYLE, makeScale, makeBlend, percentileAbs, pickLevel } from "life-metric";
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -173,12 +175,10 @@ const CATALOGUE_URL = new URL(params.get("catalogue") || DEFAULT_CATALOGUE, loca
 async function resolveStore() {
   if (params.get("store")) return { url: new URL(params.get("store"), location.href).href.replace(/\/$/, ""), releases: [] };
   try {
-    const r = await fetch(CATALOGUE_URL + "/versions.json");
-    if (!r.ok) throw new Error(String(r.status));
-    const m = await r.json();
-    const releases = Object.entries(m.versions).map(([version, v]) => ({ version, url: new URL(v.path, CATALOGUE_URL + "/").href.replace(/\/$/, ""), ...v }));
-    const wanted = params.get("version") || m.latest || releases[releases.length - 1].version;
-    const rel = releases.find((x) => x.version === wanted) || releases[releases.length - 1];
+    const releases = await versions(CATALOGUE_URL);
+    const wanted = params.get("version") || releases.find((r) => r.latest)?.version;
+    const rel = releases.find((x) => x.version === wanted);
+    if (!rel) throw new Error("release not found");
     return { url: rel.url, releases, version: rel.version };
   } catch (e) {
     console.warn("catalogue unavailable, opening the default store:", e.message);
@@ -223,21 +223,22 @@ const rgb = (c) => `rgb(${c[0]},${c[1]},${c[2]})`;
 // --- data --------------------------------------------------------------
 const status = (t) => { $("status").textContent = t; };
 const resolved = await resolveStore();
-const store = await LifeStore.open(resolved.url).catch((e) => { status("cannot open store: " + e.message); throw e; });
+const store = await open(resolved.url).catch((e) => { status("cannot open store: " + e.message); throw e; });
+const TAXA = Object.keys(store.metadata.taxa);
 $("source").textContent = resolved.url.replace(/^https?:\/\//, "");
 $("source").href = resolved.url + "/zarr.json";
-$("aboutSummary").textContent = store.info.summary || "";
-$("aboutCite").textContent = store.info.citation ? "Cite: " + store.info.citation : "";
-if (store.info.doi) {
+$("aboutSummary").textContent = store.metadata.summary || "";
+$("aboutCite").textContent = store.metadata.citation ? "Cite: " + store.metadata.citation : "";
+if (store.metadata.doi) {
   const a = document.createElement("a");
-  a.href = "https://doi.org/" + store.info.doi;
-  a.textContent = "Data of record: " + store.info.doi;
+  a.href = "https://doi.org/" + store.metadata.doi;
+  a.textContent = "Data of record: " + store.metadata.doi;
   $("dataRecord").append(a);
 } else {
   $("dataRecord").textContent = "This store has no Zenodo DOI.";
 }
-$("aboutTerms").innerHTML = store.info.termsOfUse
-  ? `Terms of use: ${store.info.termsOfUse.replace(/ibat@ibat-alliance\.org/, '<a href="mailto:ibat@ibat-alliance.org">ibat@ibat-alliance.org</a>')}` : "";
+$("aboutTerms").innerHTML = store.metadata.termsOfUse
+  ? `Terms of use: ${store.metadata.termsOfUse.replace(/ibat@ibat-alliance\.org/, '<a href="mailto:ibat@ibat-alliance.org">ibat@ibat-alliance.org</a>')}` : "";
 if (resolved.releases.length > 1) {
   const sel = $("version");
   sel.innerHTML = resolved.releases.map((r) => `<option value="${r.version}" ${r.version === resolved.version ? "selected" : ""}>v${r.version}${r.released ? " · " + r.released : ""}</option>`).join("");
@@ -257,18 +258,20 @@ const choices = (id, entries, display) => {
   if (!(state[id] in entries)) state[id] = Object.keys(entries)[0];
   select.value = state[id];
 };
-choices("scenario", store.scenarios, (name) => name.replaceAll("_", " ").replace(/^./, (c) => c.toUpperCase()));
-choices("curve", store.curves, (name) => name === "gompertz" ? "Gompertz" : "z = " + name);
+choices("scenario", store.metadata.scenarios, (name) => name.replaceAll("_", " ").replace(/^./, (c) => c.toUpperCase()));
+choices("curve", store.metadata.curves, (name) => name === "gompertz" ? "Gompertz" : "z = " + name);
 
-const currentLayer = () => (isArea() ? store.area(state.scenario) : store.layer(state.scenario, state.curve));
+const currentName = () => isArea() ? `${state.scenario}_area_changed` : `${state.scenario}_${state.curve}`;
+const currentLayer = () => store.layerMetadata(currentName());
 const currentBand = () => (isArea() ? 0 : state.taxon);
-const coarsest = store.levels[store.levels.length - 1];
+const factors = store.metadata.levels.map((level) => level.factor);
+const coarsest = factors[factors.length - 1];
 
 let scale = null;
 let blend = null;
 
 async function coarseBand(layer, band) {
-  const r = await layer.read({ taxon: layer.bands[band], level: coarsest });
+  const r = await store.read(layer.name, { bounds: store.metadata.bounds, taxon: layer.bands[band], level: coarsest });
   return r.data;
 }
 
@@ -343,13 +346,13 @@ const map = new maplibregl.Map({
 });
 map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), "top-right");
 map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution:
-  `LIFE v${store.version} <a href="https://doi.org/10.1098/rstb.2023.0327">Eyres et al. 2025</a> (IBAT terms)` }), "bottom-right");
+  `LIFE v${store.metadata.version} <a href="https://doi.org/10.1098/rstb.2023.0327">Eyres et al. 2025</a> (IBAT terms)` }), "bottom-right");
 
 let mapLayer = null;
 let styleReady = false;
 async function tileSpec() {
   const layer = await currentLayer();
-  return isBlend() ? { layer, blend } : { layer, band: currentBand(), taxon: layer.bands[currentBand()], scale, hideZeros: !state.zeros };
+  return isBlend() ? { client: store, layer: layer.name, blend } : { client: store, layer: layer.name, taxon: layer.bands[currentBand()], scale, hideZeros: !state.zeros };
 }
 async function drawData() {
   if (!styleReady || !(scale || blend)) return;
@@ -418,17 +421,17 @@ map.on("mousemove", (e) => {
     hoverTimer = null;
     if (!(isBlend() ? blend : scale)) return; // colours not built yet
     const { lat, lng } = e.lngLat;
-    const factor = pickLevel(map.getZoom(), store.levels, store.grid.res);
+    const factor = pickLevel(map.getZoom(), factors, store.metadata.resolution);
     const layer = await currentLayer();
     const where = `<b>${lat.toFixed(3)}°, ${lng.toFixed(3)}°</b> · ${factor === 1 ? "1′" : factor + "′ overview"}`;
     if (isBlend()) {
-      const vs = await Promise.all(BLEND_BANDS.map((b) => layer.value(lat, lng, layer.bands[b], factor).catch(() => NaN)));
+      const vs = await Promise.all(BLEND_BANDS.map((b) => store.sample(layer.name, [[lng, lat]], { taxon: layer.bands[b], level: factor }).then((v) => v[0]).catch(() => NaN)));
       const c = blend.rgba(vs);
       const chip = c[3] ? `<span class="chip" style="display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-2px;background:rgba(${c.join(",")})"></span> ` : "";
       $("readout").innerHTML = `${where}<br>${chip}` + blend.names.map((n, i) => `<span style="white-space:nowrap">${label(n).toLowerCase()} <b>${fmt(vs[i], 3)}</b></span>`).join(" · ");
       return;
     }
-    const v = await layer.value(lat, lng, layer.bands[currentBand()], factor).catch(() => NaN);
+    const v = await store.sample(layer.name, [[lng, lat]], { taxon: layer.bands[currentBand()], level: factor }).then((v) => v[0]).catch(() => NaN);
     $("readout").innerHTML = `${where} · <b>${fmt(v, 4)}</b>`;
   }, 60);
 });
@@ -436,14 +439,11 @@ map.on("mousemove", (e) => {
 map.on("click", async (e) => {
   const { lat, lng } = e.lngLat;
   const popup = new maplibregl.Popup({ maxWidth: "320px" }).setLngLat(e.lngLat).setHTML('<div class="popup">reading full-resolution data…</div>').addTo(map);
-  const g = store.grid, r = g.row(lat), c = g.col(lng);
-  if (r < 0) { popup.setHTML('<div class="popup">outside the grid</div>'); return; }
-  const window = { row0: r, row1: r + 1, col0: c, col1: c + 1 };
   const [score, area] = await Promise.all([
-    store.layer(state.scenario, state.curve).then((l) => l.read({ taxon: null, window })),
-    store.area(state.scenario).then((l) => l.read({ window })),
+    Promise.all(TAXA.map((taxon) => store.sample(`${state.scenario}_${state.curve}`, [[lng, lat]], { taxon }).then((values) => values[0]))),
+    store.sample(`${state.scenario}_area_changed`, [[lng, lat]]),
   ]).catch(() => [null, null]);
-  const vals = score ? Array.from(score.data) : TAXA.map(() => NaN);
+  const vals = score || TAXA.map(() => NaN);
   const rows = TAXA.map((t, i) => {
     const v = vals[i];
     let sw = `<span class="swatch"></span>`;
@@ -453,7 +453,7 @@ map.on("click", async (e) => {
   }).join("");
   const mixed = isBlend() && blend ? blend.rgba(vals.slice(1)) : null;
   const mixRow = mixed && mixed[3] ? `<tr><td><span class="swatch" style="background:rgba(${mixed.join(",")})"></span>blend</td><td></td></tr>` : "";
-  const a = area ? area.data[0] : NaN;
+  const a = area ? area[0] : NaN;
   popup.setHTML(`<div class="popup"><b>${lat.toFixed(4)}°, ${lng.toFixed(4)}°</b><br>
     ${state.scenario} · ${state.curve === "gompertz" ? "Gompertz" : "z = " + state.curve} · Δ extinctions / km²<br>
     <table>${rows}${mixRow}<tr><td>area changed</td><td>${Number.isFinite(a) ? (a / 1e6).toPrecision(3) + " km²" : "no data"}</td></tr></table></div>`);

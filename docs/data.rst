@@ -1,89 +1,59 @@
-LIFE data and stores
-====================
+LIFE data
+=========
 
-What the scores mean
---------------------
+Scores and changed area
+-----------------------
 
-The v1.01 LIFE release maps how land-use changes affect the survival of
-30,875 species of amphibians, birds, mammals and reptiles. At each land
-pixel, one arc-minute or about 1.9 km across, a score estimates the change
-in the expected number of species extinctions over the next century if one
-square kilometre there changed use. For example, 0.01 means one hundredth of
-an expected extinction more. Positive scores mean more extinctions and
-negative scores mean fewer. NaN means the scenario changes nothing at that
-pixel. Arable layers also contain valid zero scores over the ocean; use
-changed area when identifying land affected by a scenario.
+LIFE scores estimate the change in expected extinctions per square kilometre
+of land changed. Positive values mean more extinctions, and negative values
+mean fewer. Missing scores are NaN. Arable layers also contain valid zero
+scores over the ocean. Use the changed-area layer to identify where a
+scenario affects land.
 
-The ``arable`` scenario converts land from its present state to cropland;
-``restore`` restores cropland and pasture to natural vegetation. Each has
-five persistence curves, which differ in how fast a species is assumed to
-lose its chance of survival as its habitat shrinks. Curve ``0.25`` is the
-published result; the others form a sensitivity analysis.
+A score layer is named ``{scenario}_{curve}``. It has an ``all`` band and
+separate ``AMPHIBIA``, ``AVES``, ``MAMMALIA``, and ``REPTILIA`` bands. The
+``all`` band is the sum of the four classes. In v1.01, ``arable`` converts
+land to cropland and ``restore`` restores cropland and pasture to natural
+vegetation. Curve ``0.25`` is the main result; the other curves are a
+sensitivity analysis. Read the descriptions in ``metadata()`` when choosing
+a scenario or curve.
 
-Each score layer has an ``all`` band and separate ``AMPHIBIA``, ``AVES``,
-``MAMMALIA`` and ``REPTILIA`` bands. ``all`` is the sum of the four class
-bands. Each scenario also has a changed-area layer in square metres. At
-source resolution, multiply a score by the changed area divided by one
-million to estimate the maximum change in expected extinctions in a pixel:
-
-.. code-block:: python
-
-   from life_metric import read
-
-   bounds = (43, -26, 51, -12)
-   score, transform = read("restore_0.25", bounds=bounds)
-   area_m2, _ = read("restore_area_changed", bounds=bounds)
-   pixel_change = score * (area_m2 / 1_000_000)
-
-Use a bounded region for ordinary reads: the full source grid is large.
-The :ref:`read-region` tutorial step shows how to choose a bounding box.
+Changed-area layers are named ``{scenario}_area_changed`` and use square
+metres. Zero area is valid data. At native resolution, multiply a score by
+changed area divided by one million to estimate the change in expected
+extinctions for a pixel.
 
 Versions and resolution
 -----------------------
 
-Reads open the published v1.01 store by default. Pass ``source`` for a local
-directory, URL, or open Zarr group, or ``version`` to select a named release.
-``versions()`` reads ``versions.json`` at a catalogue root. The
-published catalogue also lists ``1.1~beta1``. That beta has six scenarios
-(``arable``, ``pasture``, ``urban``, ``restore``,
-``restore_agriculture``, ``restore_all``), only curve ``0.25``, and float64
-values; v1.01 uses float32. Inspect ``metadata()["scenarios"]`` and
-``metadata()["curves"]`` before selecting a layer. Native xarray datasets
-expose the same descriptions in ``dataset.attrs``. See :ref:`choose-version`.
+Reads use the published v1.01 store by default. Pass ``source`` for a local
+store or URL, or ``version`` for a named release. ``versions()`` lists the
+catalogue entries. The catalogue also includes ``1.1~beta1``, which has six
+scenarios, curve ``0.25``, and float64 values. v1.01 uses float32 values.
+Inspect ``metadata()["scenarios"]`` and ``metadata()["curves"]`` for the
+selected version. See :ref:`choose-version`.
 
-The base grid is level 1. Levels 2, 4, 8 and 16 have pixels that many times
-wider. An overview pixel averages finite values beneath it for display and
+``level=1`` selects native resolution. Levels 2, 4, 8, and 16 have pixels
+that many times wider. Overviews average finite values for display and
 exploration. Use level 1 for area totals or calculations that multiply
-scores by changed area. The ``level`` argument selects a reduction factor,
-not a Zarr group name.
+scores by changed area. Multiplying overview averages does not preserve
+those totals.
 
-Store layout and metadata
--------------------------
+Coordinates and metadata
+------------------------
 
-The Zarr root carries the dataset title, summary, version, citation, terms,
-scenario, curve and taxon descriptions, plus a ``data_model`` explaining
-array names, units and missing values. Its ``multiscales.layout`` maps
-reduction factors to level groups. The package reads these attributes, so
-``metadata()`` and xarray attributes describe the opened version.
+The raster CRS is EPSG:4326. Bounds use west, south, east, north, and point
+pairs use longitude, latitude. Returned transforms describe pixel edges.
+xarray coordinates describe pixel centres, with latitude decreasing from
+north to south. Split regions at the antimeridian before reading them.
 
-Each level group contains ``lat``, ``lon``, ``taxon``, ``spatial_ref``, score
-arrays named ``{scenario}_{curve}`` and area arrays named
-``{scenario}_area_changed``. Arrays describe their units, scenario, kind,
-and, for scores, their curve and taxon bands. Score arrays have NaN fill;
-area arrays have zero fill, which is valid data. Level groups carry CRS and
-affine placement in ``proj:`` and ``spatial:`` attributes. The ``taxon`` coordinate uses integer
-indices with ``flag_values`` and ``flag_meanings`` attributes.
+``metadata()`` returns the store's dataset attributes, including scenario,
+curve, and taxon descriptions, the citation, and data terms. xarray datasets
+carry these in ``dataset.attrs``. The :doc:`api` and :doc:`tutorial` describe
+how to read them.
 
-These attributes are also available through zarr-python directly:
-
-.. code-block:: python
-
-   import zarr
-
-   root = zarr.open_group("/path/to/v1.01", mode="r")
-   print(root.attrs["data_model"])
-   base = root[root.attrs["multiscales"]["layout"][0]["asset"]]
-   print(base["arable_0.25"].attrs["description"])
-
-The complete method signatures are in the :doc:`api`. To render scores,
-see :ref:`colour-map` and :ref:`blend-taxa`.
+The methods are described by `Eyres et al. (2025)
+<https://doi.org/10.1098/rstb.2023.0327>`_. The data are subject to IBAT terms:
+non-commercial use only, and no redistribution in their original form
+without written permission. Read ``metadata()["terms_of_reference"]`` for
+the full terms.

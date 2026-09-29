@@ -1,11 +1,17 @@
 Tutorial
 ========
 
-Install ``life-metric`` and run the examples from the repository root.
-Each script accepts a local Zarr store, or uses the published v1.01 store.
-Install ``life-metric[geo]`` for polygon masks and GeoTIFF export, and
-``life-metric[xarray]`` for xarray and rioxarray. In a checkout, ``uv sync``
-installs the dependencies needed by the examples.
+Clone the repository and install the example dependencies with uv.
+
+.. code-block:: shell
+
+   git clone https://github.com/quantifyearth/LIFE.py.git
+   cd LIFE.py
+   uv sync
+
+Run the following commands from the repository root. Each read example
+accepts a local Zarr store; omit that argument to use the published v1.01
+store. The version example accepts a catalogue instead.
 
 .. _read-region:
 
@@ -17,9 +23,10 @@ Bounds are west, south, east, north. Pixels that intersect the bounds are
 included. Use NumPy to calculate statistics directly; missing scores are NaN.
 The returned transform describes the actual pixel edges.
 
-.. literalinclude:: ../examples/1-read-region/read_region.py
+.. literalinclude:: ../examples/1-read-region/README.md
    :language: python
-   :start-at: import argparse
+   :start-after: ```python
+   :end-before: ```
 
 Run ``uv run python examples/1-read-region/read_region.py /path/to/v1.01``.
 
@@ -32,9 +39,10 @@ and returns a NumPy masked array. Pixel centres determine inclusion by default;
 ``all_touched=True`` includes any touched pixel. The returned raster remains in
 EPSG:4326. Install ``life-metric[geo]`` for this step.
 
-.. literalinclude:: ../examples/2-mask-polygon/mask_polygon.py
+.. literalinclude:: ../examples/2-mask-polygon/README.md
    :language: python
-   :start-at: import argparse
+   :start-after: ```python
+   :end-before: ```
 
 Run ``uv run --extra geo python examples/2-mask-polygon/mask_polygon.py /path/to/v1.01``.
 
@@ -46,9 +54,10 @@ band labels, citation, and data terms. Open the file with rasterio and use
 your usual workflow. Install ``life-metric[geo]`` for this step. The example
 refuses to replace an existing output unless ``--overwrite`` is given.
 
-.. literalinclude:: ../examples/3-download-geotiff/download_geotiff.py
+.. literalinclude:: ../examples/3-download-geotiff/README.md
    :language: python
-   :start-at: import argparse
+   :start-after: ```python
+   :end-before: ```
 
 Run ``uv run --extra geo python examples/3-download-geotiff/download_geotiff.py /path/to/v1.01 --output region.tif``.
 
@@ -59,9 +68,10 @@ Run ``uv run --extra geo python examples/3-download-geotiff/download_geotiff.py 
 and returns a NumPy array. The example compares arable conversion and
 restoration. NaN means no score is available at that point.
 
-.. literalinclude:: ../examples/4-sample-points/sample_points.py
+.. literalinclude:: ../examples/4-sample-points/README.md
    :language: python
-   :start-at: import sys
+   :start-after: ```python
+   :end-before: ```
 
 Run ``uv run python examples/4-sample-points/sample_points.py /path/to/v1.01``.
 
@@ -72,14 +82,14 @@ Run ``uv run python examples/4-sample-points/sample_points.py /path/to/v1.01``.
 
 ``versions()`` returns dictionaries for the releases in a catalogue.
 ``metadata()`` reads the selected store's attributes without reading pixels.
-Inspect its scenario and curve descriptions before selecting a layer; the
-v1.1 beta differs from v1.01.
+Inspect its scenario and curve descriptions before selecting a layer.
 
-.. literalinclude:: ../examples/5-choose-version/choose_version.py
+.. literalinclude:: ../examples/5-choose-version/README.md
    :language: python
-   :start-at: import argparse
+   :start-after: ```python
+   :end-before: ```
 
-Run ``uv run python examples/5-choose-version/choose_version.py /path/to/catalogue --version 1.1~beta1``.
+Run ``uv run python examples/5-choose-version/choose_version.py /path/to/catalogue --version 1.01``.
 
 6. Use xarray
 -------------
@@ -90,9 +100,10 @@ conversion as usual. Latitude coordinates decrease from north to south.
 Install ``life-metric[xarray]`` for this step. Overview means are for exploration;
 use level 1 for pixel totals.
 
-.. literalinclude:: ../examples/6-xarray/xarray_example.py
+.. literalinclude:: ../examples/6-xarray/README.md
    :language: python
-   :start-at: import argparse
+   :start-after: ```python
+   :end-before: ```
 
 Run ``uv run --extra xarray python examples/6-xarray/xarray_example.py /path/to/v1.01``.
 
@@ -105,9 +116,10 @@ The colour functions accept NumPy arrays. Red means more expected
 extinctions and blue means fewer. Set the colour range from the 99th percentile
 so a few large values do not dominate the image.
 
-.. literalinclude:: ../examples/7-colour-map/colour_map.py
+.. literalinclude:: ../examples/7-colour-map/README.md
    :language: python
-   :start-at: import argparse
+   :start-after: ```python
+   :end-before: ```
 
 Run ``uv run python examples/7-colour-map/colour_map.py /path/to/v1.01 --output region.png``.
 
@@ -121,9 +133,10 @@ is ``all``, followed by amphibians, birds, mammals, and reptiles. Omit ``all``
 from the blend and give each class its own colour range. The map shows the
 strongest class and darkens places where classes are similarly affected.
 
-.. literalinclude:: ../examples/8-taxa-blend/taxa_blend.py
+.. literalinclude:: ../examples/8-taxa-blend/README.md
    :language: python
-   :start-at: import argparse
+   :start-after: ```python
+   :end-before: ```
 
 Run ``uv run python examples/8-taxa-blend/taxa_blend.py /path/to/v1.01 --output taxa.png``.
 

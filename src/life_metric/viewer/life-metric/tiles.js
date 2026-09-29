@@ -1,4 +1,5 @@
 /** Paint Web Mercator map tiles from a layer, for MapLibre, Leaflet or any XYZ consumer. */
+import { Grid } from "./grid.js";
 /** Pixel-centre longitudes of tile column `x` at zoom `z`. */
 export function tileLons(x, z, size = 256) {
     const scale = 360 / (size * 2 ** z);
@@ -27,14 +28,22 @@ export function pickLevel(z, levels, res, size = 256, latitude = 0) {
  * The overview level is chosen from the zoom, the covering window is read
  * in one request, and each tile pixel takes its nearest source pixel.
  */
-export async function paintTile(layer, opts) {
+export async function paintTile(client, layer, opts) {
+    opts.signal?.throwIfAborted();
     const size = opts.size ?? 256;
     if (!Number.isInteger(size) || size <= 0)
         throw new RangeError("tile size must be a positive integer");
     const lats = tileLats(opts.y, opts.z, size), lons = tileLons(opts.x, opts.z, size);
     const furthest = Math.max(Math.abs(lats[0]), Math.abs(lats[size - 1]));
-    const level = opts.level ?? pickLevel(opts.z, layer.store.levels, layer.store.grid.res, size, furthest);
-    const grid = await layer.grid(level);
+    if (!Number.isInteger(opts.z) || opts.z < 0 || opts.z > 30 || !Number.isInteger(opts.x) || !Number.isInteger(opts.y) ||
+        opts.x < 0 || opts.y < 0 || opts.x >= 2 ** opts.z || opts.y >= 2 ** opts.z)
+        throw new RangeError("tile coordinates must be valid XYZ integers");
+    const metadata = client.metadata;
+    const level = opts.level ?? pickLevel(opts.z, metadata.levels.map((l) => l.factor), metadata.resolution, size, furthest);
+    const selected = metadata.levels.find((l) => l.factor === level);
+    if (!selected)
+        throw new RangeError(`level ${level} is not in the store`);
+    const grid = new Grid(selected.width, selected.height, selected.resolution, selected.transform[2], selected.transform[5]);
     const rows = new Int32Array(size), cols = new Int32Array(size);
     let rmin = Infinity, rmax = -Infinity, cmin = Infinity, cmax = -Infinity;
     for (let j = 0; j < size; j++) {
@@ -54,14 +63,20 @@ export async function paintTile(layer, opts) {
         cmin = Math.min(cmin, c);
         cmax = Math.max(cmax, c);
     }
-    const window = { row0: rmin, row1: rmax + 1, col0: cmin, col1: cmax + 1 };
-    const w = window.col1 - window.col0, h = window.row1 - window.row0;
+    const window = [cmin, rmin, cmax + 1, rmax + 1];
+    const w = cmax - cmin + 1, h = rmax - rmin + 1;
     if (opts.blend) {
         const blend = opts.blend;
-        const raster = await layer.read({ taxon: null, window, level });
-        const bands = blend.names.map((n) => raster.band(n));
+        const raster = await client.read(layer, { taxon: null, window, level, ...(opts.signal && { signal: opts.signal }) });
+        const bands = blend.names.map((n) => {
+            const index = raster.bands.indexOf(n);
+            if (index < 0)
+                throw new Error(`${layer} has no ${n} band`);
+            return raster.data.subarray(index * w * h, (index + 1) * w * h);
+        });
         const values = new Float64Array(bands.length);
         for (let j = 0; j < size; j++) {
+            opts.signal?.throwIfAborted();
             if (rows[j] < 0)
                 continue;
             const rr = rows[j] - rmin;
@@ -78,12 +93,13 @@ export async function paintTile(layer, opts) {
     if (!scale)
         throw new Error("paintTile needs a scale or a blend");
     const hideZeros = opts.hideZeros ?? true;
-    const raster = await layer.read({ taxon: opts.taxon ?? "all", window, level });
+    const raster = await client.read(layer, { taxon: opts.taxon ?? "all", window, level, ...(opts.signal && { signal: opts.signal }) });
     const src = raster.data;
     if (src.length !== w * h)
         throw new Error("unexpected raster size");
     const { lut } = scale;
     for (let j = 0; j < size; j++) {
+        opts.signal?.throwIfAborted();
         if (rows[j] < 0)
             continue;
         const rr = rows[j] - rmin;

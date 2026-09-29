@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urljoin
@@ -15,14 +16,9 @@ DEFAULT_CATALOGUE = "https://data.source.coop/tessera/life"
 
 
 def version_key(version: str) -> tuple[tuple[int, str], ...]:
-    """Return a sort key that orders dotted versions numerically."""
-    parts = []
-    for p in version.split("."):
-        try:
-            parts.append((int(p), ""))
-        except ValueError:
-            parts.append((-1, p))
-    return tuple(parts)
+    """Order numeric parts of release names numerically, including beta numbers."""
+    return tuple((int(part), "") if part.isdigit() else (-1, part)
+                 for part in re.findall(r"[0-9]+|[^0-9]+", version))
 
 
 def _is_url(s: str) -> bool:
@@ -77,7 +73,7 @@ class Catalogue:
         return self._manifest
 
     def releases(self) -> list[Release]:
-        """Return every release, oldest first."""
+        """Return every release in version order."""
         m = self._load()
         out = []
         for version, info in m["versions"].items():

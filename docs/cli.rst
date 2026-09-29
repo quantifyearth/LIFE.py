@@ -24,10 +24,11 @@ QUERY
 
 ``query`` reads one score at a latitude and longitude. The default layer is
 ``arable_0.25`` and the default band is ``all``. Use ``--area`` to read
-changed area instead. A store may be a local directory or a URL.
+changed area instead. Pass a local directory or URL as ``SOURCE``, or omit
+it to read the published v1.01 store. A matching store under ``./data`` takes precedence.
+Use ``--version`` to select another published release.
 
-The query and download example below is kept in ``examples/cli.sh`` and
-is run against a test store by the test suite.
+The following script queries a point and downloads a region.
 
 .. literalinclude:: ../examples/cli.sh
    :language: shell
@@ -81,6 +82,4 @@ LIFE from source data, use `quantifyearth/LIFE
    life-metric admin verify --data-dir data
    life-metric admin catalogue --data-dir data --released 2024-12-19
 
-The beta has a separate converter in ``examples/build_beta_store.py``.
-The methods and meaning of the scores are described by `Eyres et al. (2025)
-<https://doi.org/10.1098/rstb.2023.0327>`_. The store carries its terms of use.
+See ``examples/build_beta_store.py`` to convert the beta GeoTIFFs.

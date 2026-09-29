@@ -253,9 +253,10 @@ class Layer:
 
 
 def _descriptions(value: Any, name: str) -> dict[str, str]:
-    if not isinstance(value, dict) or not value:
-        raise ValueError(f"the store has no {name} descriptions")
-    return {str(k): str(v) for k, v in value.items()}
+    if not isinstance(value, dict) or not value or not all(
+            isinstance(v, str) and v.strip() for v in value.values()):
+        raise ValueError(f"the store has no valid {name} descriptions")
+    return dict(value)
 
 
 class Store:

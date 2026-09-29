@@ -1,4 +1,5 @@
 import os
+import json
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -7,6 +8,7 @@ import numpy as np
 import pytest
 
 from life_metric import open_dataset
+from life_metric import versions
 from life_metric._catalogue import Catalogue
 from life_metric._grid import BBox, Grid, Window
 from life_metric._store import open_store
@@ -79,6 +81,26 @@ def test_missing_store_descriptions_are_reported(tmp_path: Path) -> None:
     root = zarr.create_group(tmp_path / "missing-metadata", zarr_format=3)
     with pytest.raises(ValueError, match="scenario descriptions"):
         open_store(root)
+
+
+@pytest.mark.parametrize("description", [None, "", " ", 42])
+def test_invalid_store_descriptions_are_reported(tmp_path: Path, description: object) -> None:
+    import zarr
+
+    root = zarr.create_group(tmp_path / "invalid-metadata", zarr_format=3)
+    root.attrs["scenarios"] = {"arable": description}
+    with pytest.raises(ValueError, match="valid scenario descriptions"):
+        open_store(root)
+
+
+def test_catalogue_orders_beta_release_numbers(tmp_path: Path) -> None:
+    names = ["1.1~beta10", "0.10", "1.01", "1.1~beta2", "0.9"]
+    (tmp_path / "versions.json").write_text(json.dumps({
+        "versions": {name: {"path": f"v{name}"} for name in names}, "latest": "1.01",
+    }))
+    releases = versions(tmp_path)
+    assert [release["version"] for release in releases] == ["0.9", "0.10", "1.01", "1.1~beta2", "1.1~beta10"]
+    assert [release["version"] for release in releases if release["latest"]] == ["1.01"]
 
 
 def test_read_bbox_and_window(store_path: Path) -> None:
